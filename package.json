@@ -1,0 +1,38 @@
+{
+  "name": "virtual-dom-engine",
+  "version": "0.1.0",
+  "description": "A React-like Virtual DOM / Diff / Patch learning engine with a demo page.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "browser": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "test": "node ./scripts/run-node-tests.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "virtual-dom",
+    "diff",
+    "patch",
+    "reconciler",
+    "history",
+    "vanilla-js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

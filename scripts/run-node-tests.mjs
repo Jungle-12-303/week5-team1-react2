@@ -1,0 +1,63 @@
+import { runEngineTests } from "../src/tests/engine.test.js";
+import { runHistoryTests } from "../src/tests/history.test.js";
+import { runI18nTests } from "../src/tests/i18n.test.js";
+import { runInspectTests } from "../src/tests/inspect.test.js";
+import { runIntegrationTests } from "../src/tests/integration.test.js";
+import { runPatchTests } from "../src/tests/patch.test.js";
+import { runReconcilerTests } from "../src/tests/reconciler.test.js";
+import { runUtilsTests } from "../src/tests/utils.test.js";
+import { runVnodeTests } from "../src/tests/vnode.test.js";
+
+const suites = [
+  { name: "vnode", run: runVnodeTests },
+  { name: "reconciler", run: runReconcilerTests },
+  { name: "patch", run: runPatchTests },
+  { name: "history", run: runHistoryTests },
+  { name: "engine", run: runEngineTests },
+  { name: "integration", run: runIntegrationTests },
+  { name: "utils", run: runUtilsTests },
+  { name: "inspect", run: runInspectTests },
+  { name: "i18n", run: runI18nTests },
+];
+
+const flatCases = suites.flatMap((suite) =>
+  suite.run().map((testCase) => ({
+    suite: suite.name,
+    ...testCase,
+  }))
+);
+
+const summary = flatCases.reduce(
+  (result, testCase) => {
+    result.total += 1;
+
+    if (testCase.skipped) {
+      result.skipped += 1;
+      return result;
+    }
+
+    if (testCase.passed) {
+      result.passed += 1;
+      return result;
+    }
+
+    result.failed += 1;
+    return result;
+  },
+  { total: 0, passed: 0, failed: 0, skipped: 0 }
+);
+
+for (const testCase of flatCases) {
+  const prefix = testCase.skipped ? "SKIP" : testCase.passed ? "PASS" : "FAIL";
+  const detail = testCase.error ? `: ${testCase.error}` : "";
+  console.log(`[${prefix}] ${testCase.suite} :: ${testCase.name}${detail}`);
+}
+
+console.log("");
+console.log(
+  `Summary: total ${summary.total}, passed ${summary.passed}, failed ${summary.failed}, skipped ${summary.skipped}`
+);
+
+if (summary.failed > 0) {
+  process.exitCode = 1;
+}
