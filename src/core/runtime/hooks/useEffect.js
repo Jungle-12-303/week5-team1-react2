@@ -28,6 +28,11 @@ export function useEffect(create, deps) {
   }
 
   const hookIndex = component.hookCursor;
+
+  if (component.expectedHookCount !== null && hookIndex >= component.expectedHookCount) {
+    throw new Error("Hook count changed between renders.");
+  }
+
   let slot = component.hooks[hookIndex];
 
   const mustRun = shouldRunEffect(slot, deps);

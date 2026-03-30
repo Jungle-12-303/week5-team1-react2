@@ -43,6 +43,7 @@ export class FunctionComponent {
     this.scheduledUpdate = null;
     this.engine = null;
     this.hasMountedOnce = false;
+    this.expectedHookCount = null;
   }
 
   performRender(props = this.currentProps) {
@@ -55,7 +56,15 @@ export class FunctionComponent {
 
     try {
       const unresolvedVNode = this.renderFn(this.currentProps);
-      return resolveComponentTree(unresolvedVNode);
+      const resolvedVNode = resolveComponentTree(unresolvedVNode);
+
+      if (this.expectedHookCount === null) {
+        this.expectedHookCount = this.hookCursor;
+      } else if (this.hookCursor !== this.expectedHookCount) {
+        throw new Error("Hook count changed between renders.");
+      }
+
+      return resolvedVNode;
     } finally {
       clearCurrentComponent();
     }

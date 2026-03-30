@@ -160,6 +160,48 @@ export async function runRuntimeTests() {
         throw new Error("Expected form events to update root state.");
       }
     }),
+    runCase("textarea and select keep value semantics in sync", () => {
+      const root = document.createElement("div");
+
+      function App() {
+        const [note, setNote] = useState("memo");
+        const [sort, setSort] = useState("name");
+
+        return h("section", null,
+          h("textarea", {
+            value: note,
+            onInput: (event) => setNote(event.target.value),
+          }),
+          h("select", {
+            value: sort,
+            onChange: (event) => setSort(event.target.value),
+          },
+            h("option", { value: "name" }, "Name"),
+            h("option", { value: "date" }, "Date")
+          ),
+          h("p", null, `${note}|${sort}`)
+        );
+      }
+
+      createApp({ root, component: App }).mount();
+
+      const textarea = root.querySelector("textarea");
+      const select = root.querySelector("select");
+      const summary = root.querySelector("p");
+
+      if (textarea.value !== "memo" || select.value !== "name") {
+        throw new Error("Expected textarea/select initial values to reflect state.");
+      }
+
+      textarea.value = "updated";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      select.value = "date";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+
+      if (summary.textContent !== "updated|date") {
+        throw new Error("Expected textarea/select events to update state.");
+      }
+    }),
     runCase("child components cannot use hooks", () => {
       const root = document.createElement("div");
 
@@ -182,6 +224,69 @@ export async function runRuntimeTests() {
 
       if (!errorMessage.includes("Hooks are only supported in the root component render")) {
         throw new Error("Expected child hook usage to throw a root-only hook error.");
+      }
+    }),
+    runCase("hook count changes between renders throw an explicit error", () => {
+      const root = document.createElement("div");
+
+      function App(props) {
+        useState(0);
+
+        if (props.extra) {
+          useMemo(() => 1, []);
+        }
+
+        return h("div", null, "ok");
+      }
+
+      const app = createApp({
+        root,
+        component: App,
+        props: { extra: false },
+      });
+
+      app.mount();
+
+      let errorMessage = "";
+
+      try {
+        app.updateProps({ extra: true });
+      } catch (error) {
+        errorMessage = error.message;
+      }
+
+      if (!errorMessage.includes("Hook count changed between renders")) {
+        throw new Error("Expected hook count drift to throw an explicit error.");
+      }
+    }),
+    runCase("useEffect without deps runs on every update and empty deps run once", () => {
+      const root = document.createElement("div");
+      const lifecycle = [];
+      let setCount = null;
+
+      function App() {
+        const [count, updateCount] = useState(0);
+        setCount = updateCount;
+
+        useEffect(() => {
+          lifecycle.push(`always:${count}`);
+        });
+
+        useEffect(() => {
+          lifecycle.push(`once:${count}`);
+        }, []);
+
+        return h("div", null, String(count));
+      }
+
+      createApp({ root, component: App }).mount();
+      setCount(1);
+      setCount(2);
+
+      const joined = lifecycle.join(",");
+
+      if (joined !== "always:0,once:0,always:1,always:2") {
+        throw new Error(`Unexpected effect dependency behavior: ${joined}`);
       }
     }),
   ];

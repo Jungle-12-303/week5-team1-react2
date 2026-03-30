@@ -17,6 +17,11 @@ export function useState(initialState) {
   assertRootOnlyHookUsage();
 
   const hookIndex = component.hookCursor;
+
+  if (component.expectedHookCount !== null && hookIndex >= component.expectedHookCount) {
+    throw new Error("Hook count changed between renders.");
+  }
+
   let slot = component.hooks[hookIndex];
 
   if (!slot) {

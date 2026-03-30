@@ -1,3 +1,4 @@
+import { installTestDomEnvironment } from "../src/tests/support/testDomEnvironment.js";
 import { runEngineTests } from "../src/tests/engine.test.js";
 import { runHistoryTests } from "../src/tests/history.test.js";
 import { runInspectTests } from "../src/tests/inspect.test.js";
@@ -7,6 +8,8 @@ import { runReconcilerTests } from "../src/tests/reconciler.test.js";
 import { runRuntimeTests } from "../src/tests/runtime.test.js";
 import { runUtilsTests } from "../src/tests/utils.test.js";
 import { runVnodeTests } from "../src/tests/vnode.test.js";
+
+installTestDomEnvironment();
 
 const suites = [
   { name: "vnode", run: runVnodeTests },
