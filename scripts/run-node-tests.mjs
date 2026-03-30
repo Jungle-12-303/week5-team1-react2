@@ -1,6 +1,5 @@
 import { runEngineTests } from "../src/tests/engine.test.js";
 import { runHistoryTests } from "../src/tests/history.test.js";
-import { runI18nTests } from "../src/tests/i18n.test.js";
 import { runInspectTests } from "../src/tests/inspect.test.js";
 import { runIntegrationTests } from "../src/tests/integration.test.js";
 import { runPatchTests } from "../src/tests/patch.test.js";
@@ -17,7 +16,6 @@ const suites = [
   { name: "integration", run: runIntegrationTests },
   { name: "utils", run: runUtilsTests },
   { name: "inspect", run: runInspectTests },
-  { name: "i18n", run: runI18nTests },
 ];
 
 const flatCases = suites.flatMap((suite) =>

@@ -1,485 +1,355 @@
-# React 유사 Virtual DOM / Diff / Patch 시스템 아키텍처
+# Week5 v3 시스템 아키텍처
 
-## 1. 문서 목적
+## 1. 아키텍처 목표
 
-본 문서는 `requirements.md`를 만족하기 위한 시스템의 구조적 설계를 정의한다.
-이 문서는 "어떤 계층으로 나누고 어떤 데이터 계약을 사용할 것인가"를 다룬다.
+v3 아키텍처는 week5 과제의 핵심 제약을 지키면서도, 기존 저장소의 Virtual DOM / Diff / Patch 자산을 최대한 재사용하는 것을 목표로 한다.
 
-`requirements.md`와 충돌하는 구현은 허용되지 않으며, 구체 설계 판단은 본 문서를 기준으로 한다.
+핵심 원칙은 다음과 같다.
 
-## 2. 설계 목표
+- 루트에만 상태를 둔다.
+- 자식은 stateless component로 유지한다.
+- Hook 상태는 루트 `FunctionComponent`가 소유한다.
+- VDOM 생성과 DOM 반영은 분리한다.
+- Diff / Patch 계층은 기존 `src/core` 자산을 우선 재사용한다.
 
-아키텍처는 다음 목표를 동시에 만족해야 한다.
+## 2. 상위 구조
 
-1. 발표와 학습에 적합한 설명 가능성
-2. 실제 동작하는 Diff / Patch / History 시스템
-3. 데모와 라이브러리의 분리
-4. 향후 React 유사 구조로 확장 가능한 계층화
-5. 보안상 안전한 테스트 편집 흐름
+v3의 상위 구조는 다음 계층으로 나눈다.
 
-## 3. 핵심 설계 결정
+1. `App Layer`
+2. `Component Runtime Layer`
+3. `Hook Runtime Layer`
+4. `VNode Layer`
+5. `Component Resolver Layer`
+6. `Reconciler Layer`
+7. `DOM Renderer Layer`
+8. `Test Layer`
 
-### 3.1 공개 API의 주 진입점은 engine이다
+## 3. 계층별 책임
 
-라이브러리의 기본 진입점은 `createEngine()`으로 한다.
-`h`, `domToVNode`, `diff`, `applyPatches`, `createHistory`는 고급 사용과 테스트를 위한 보조 export로 제공한다.
+### 3.1 App Layer
 
-이 결정으로 외부 사용자는 facade 중심으로 접근하고, 내부 구현은 계층별로 교체하기 쉬워진다.
+App Layer는 과제 데모 애플리케이션을 담당한다.
 
-### 3.2 Diff 결과의 canonical 표현은 flat patch list다
+- 루트 컴포넌트 정의
+- 루트 상태 설계
+- 자식 stateless component 구성
+- 사용자 이벤트 연결
+- 화면 주제와 사용자 흐름 설계
 
-Diff의 공식 출력은 사람이 읽기 쉬운 flat patch list로 고정한다.
-patch tree는 도입하지 않는다.
+App Layer는 상태 저장의 실제 구현을 직접 가지지 않는다.
+상태 저장과 렌더 예약은 `FunctionComponent`와 Hook Runtime이 담당한다.
 
-이 결정으로 데모 로그, 테스트 기대값, inspect 출력이 하나의 형태로 정렬된다.
+### 3.2 Component Runtime Layer
 
-### 3.3 기본 reconciliation 모드는 key-aware(auto)다
+Component Runtime Layer의 중심은 `FunctionComponent` 클래스다.
 
-- 기본 모드는 `auto`
-- 보조 모드는 `index`
-- 선택 모드는 `keyed`
+`FunctionComponent`는 최소한 다음 상태를 가진다.
 
-`auto` 모드는 React 유사 동작을 목표로 한다.
-형제 노드 집합에 key가 있으면 key를 우선 기준으로 노드 identity를 판단하고, key가 없으면 위치 기반으로 fallback 한다.
-`index` 모드는 학습과 비교 시연을 위한 강제 위치 기반 모드다.
-`keyed` 모드는 key 기반 재사용과 재정렬 동작을 명시적으로 검증하기 위한 모드다.
+- `renderFn`
+- `hooks`
+- `hookCursor`
+- `currentProps`
+- `currentVNode`
+- `rootElement`
+- `isMounted`
+- `pendingEffects`
+- `cleanupEffects`
 
-### 3.4 HTML 편집과 이벤트 검증은 분리한다
+주요 책임은 다음과 같다.
 
-사용자가 편집하는 HTML은 구조/텍스트/속성 실험을 위한 입력으로 취급한다.
-이 경로에서는 실행 가능한 이벤트를 허용하지 않는다.
+- 루트 컴포넌트 mount
+- 상태 변경 후 update
+- 루트 종료 시 unmount
+- Hook 실행 컨텍스트 초기화
+- 렌더 함수 실행
+- VDOM 교체 시점 제어
+- effect commit 예약
+- effect cleanup 실행
 
-이벤트 patch 검증은 선언형 `h()` 기반 시나리오 또는 테스트 코드로 수행한다.
-이로써 "이벤트 리스너는 DOM -> VDOM 역변환에서 복원할 수 없다"는 제약과 "이벤트 prop patch를 지원해야 한다"는 요구를 동시에 만족한다.
+자식 컴포넌트는 `FunctionComponent` 인스턴스를 따로 만들지 않는다.
+자식은 루트 렌더 중 호출되는 순수 함수이며, `props` 입력에 대해 VNode를 반환한다.
+이 호출과 전개는 별도의 component resolver 단계가 담당한다.
 
-### 3.5 초기 부트스트랩은 실제 DOM -> VDOM 흐름을 유지한다
+### 3.3 Hook Runtime Layer
 
-초기 샘플은 정적 HTML로 actual panel에 먼저 렌더링한다.
-그 후 `domToVNode()`로 초기 vnode를 만들고 test panel을 렌더링한다.
+Hook Runtime Layer는 루트 컴포넌트의 `hooks` 배열을 기반으로 작동한다.
 
-초기 샘플에는 실행 로직이 필요한 이벤트를 넣지 않는다.
-이벤트 관련 샘플은 별도 선언형 fixture로 제공한다.
+필수 구성 요소는 다음과 같다.
 
-### 3.6 history는 entries + currentIndex를 사용한다
+- 현재 활성 루트 컴포넌트를 가리키는 dispatcher
+- Hook 인덱스를 증가시키는 cursor
+- 상태 슬롯
+- effect 슬롯
+- memo 슬롯
+- dependency 비교 유틸리티
+- update scheduling 유틸리티
+- effect commit 유틸리티
 
-기본 history 표현은 다음과 같다.
+#### useState
 
-- `entries: VNode[]`
-- `currentIndex: number`
+- 각 `useState` 호출은 자신의 슬롯을 가진다.
+- 슬롯에는 현재 값과 setter가 저장된다.
+- setter는 다음 렌더를 예약하거나 즉시 수행한다.
+- 함수형 업데이트를 허용한다.
+- 이미 `unmount`된 루트에 대한 setter 호출은 no-op으로 처리한다.
 
-undo/redo를 위한 듀얼 스택은 채택하지 않는다.
-history를 변경하는 공식 경로는 초기 snapshot 생성, patch 성공, undo, redo뿐이다.
-단순 렌더 동기화는 현재 상태와 DOM만 맞추며 새 snapshot을 추가하지 않는다.
-단, 향후 최적화를 위해 inverse patch 기반 history를 추가하는 것은 확장 포인트로 남긴다.
+#### useEffect
 
-## 4. 시스템 컨텍스트
+- 각 `useEffect` 슬롯은 `deps`, `create`, `cleanup`을 가진다.
+- 렌더 단계에서는 effect 실행 여부만 결정한다.
+- 실제 effect 실행은 DOM patch 이후 commit 단계에서 수행한다.
+- 이전 cleanup이 있으면 새 effect 실행 전에 먼저 호출한다.
 
-시스템은 크게 두 부분으로 나뉜다.
+#### useMemo
 
-1. `core`
-   - Virtual DOM 생성, diff, patch, history, engine을 담당한다.
-2. `demo`
-   - 시각화, HTML 편집, 테스트 실행, 로그 표시를 담당한다.
+- 각 `useMemo` 슬롯은 `deps`, `value`를 가진다.
+- dependency가 유지되면 계산 함수를 재실행하지 않는다.
 
-demo는 core를 소비하는 일반 사용자 역할을 해야 하며 core 내부 상태나 비공개 함수에 직접 의존하면 안 된다.
-engine은 자신이 관리하는 actual DOM 루트와 내부 상태/history를 책임진다.
-test panel과 HTML 편집기 상태 동기화는 demo 계층이 engine의 현재 vnode를 사용해 수행한다.
+### 3.4 VNode Layer
 
-## 5. 주요 동작 흐름
+VNode Layer는 선언형 UI를 구조화된 데이터로 바꾸는 계층이다.
 
-### 5.1 부트스트랩
+재사용 우선 대상은 다음 모듈이다.
 
-1. 정적 샘플 HTML을 actual panel에 렌더링한다.
-2. actual panel의 DOM을 `domToVNode()`로 변환한다.
-3. 생성된 vnode를 `history.entries[0]`에 저장한다.
-4. 같은 vnode를 test panel에 렌더링한다.
-5. engine은 현재 vnode와 history 상태를 관리한다.
+- `src/core/vnode/h.js`
+- `src/core/vnode/index.js`
+- `src/core/vnode/normalizeChildren.js`
 
-### 5.2 HTML 편집 기반 patch
+책임은 다음과 같다.
 
-1. 사용자가 HTML 편집기에 내용을 입력한다.
-2. 입력 문자열을 sanitize 한다.
-3. sanitize 된 결과를 test panel 미리보기에 반영한다.
-4. test panel DOM을 다시 `domToVNode()`로 변환한다.
-5. `diff(oldVNode, newVNode, { mode })`를 실행한다.
-6. `applyPatches(actualRoot, patches, context)`를 실행한다.
-7. 성공 시 history에 snapshot을 push 한다.
+- element VNode 생성
+- 텍스트/배열/중첩 자식 정규화
+- `key`와 일반 `props` 분리
+- 이벤트 prop 전달 구조 유지
 
-### 5.3 Undo / Redo
+### 3.5 Component Resolver Layer
 
-1. history index를 이동한다.
-2. engine은 이동한 vnode를 기준으로 actual panel과 내부 current vnode를 갱신한다.
-3. demo는 engine이 반환한 current vnode를 기준으로 test panel과 편집기 상태를 갱신한다.
-4. inspect 정보와 history 패널도 함께 갱신한다.
+Component Resolver Layer는 `h(Child, props)`처럼 선언된 자식 함수형 컴포넌트를 실제 VNode 트리로 전개하는 계층이다.
 
-### 5.4 이벤트 검증
+책임은 다음과 같다.
 
-1. 선언형 fixture가 `h()` 기반 vnode를 생성한다.
-2. engine이 vnode를 렌더링한다.
-3. 후속 vnode와 diff/patch를 수행한다.
-4. 이벤트 연결/교체/제거를 로그와 테스트에서 검증한다.
+- 함수형 자식 컴포넌트 식별
+- 자식 컴포넌트에 `props` 주입
+- 반환값을 일반 VNode 트리로 정규화
+- Hook 사용이 금지된 자식 컴포넌트 규칙 검증
+- diff 이전 단계에서 최종 렌더 트리 확정
 
-## 6. 계층 구조
+### 3.6 Reconciler Layer
 
-### 6.1 vnode layer
+Reconciler Layer는 이전 VDOM과 다음 VDOM을 비교해 patch 목록을 만든다.
 
-책임:
+재사용 우선 대상은 다음 모듈이다.
 
-- vnode 생성
-- children normalization
-- key, props, events 정규화
-- text vnode 생성
+- `src/core/reconciler/diff.js`
+- `src/core/reconciler/diffChildren.js`
+- `src/core/reconciler/diffProps.js`
 
-비책임:
+필수 책임은 다음과 같다.
 
-- DOM 생성
-- diff
-- history 관리
+- 노드 교체 판단
+- 텍스트 변경 감지
+- props 변경 감지
+- 이벤트 변경 감지
+- child list 추가/삭제/이동 계산
+- `key` 기반 항목 매칭
 
-### 6.2 reconciler layer
+### 3.7 DOM Renderer Layer
 
-책임:
+DOM Renderer Layer는 patch를 실제 DOM에 반영한다.
 
-- old/new vnode 비교
-- props diff
-- children diff
-- flat patch list 생성
+재사용 우선 대상은 다음 모듈이다.
 
-비책임:
+- `src/core/renderer-dom/createDom.js`
+- `src/core/renderer-dom/patch.js`
+- `src/core/renderer-dom/applyProps.js`
+- `src/core/renderer-dom/applyEvents.js`
 
-- DOM 조작
-- UI 로그 표시
+책임은 다음과 같다.
 
-### 6.3 renderer-dom layer
+- 최초 DOM 생성
+- patch 적용
+- 속성 반영
+- 이벤트 바인딩/교체/해제
+- 텍스트 갱신
+- 기본 form semantics 반영
 
-책임:
+기본 form semantics 범위는 아래와 같다.
 
-- vnode로부터 실제 DOM 생성
-- DOM -> VDOM 변환
-- props/property 적용
-- 이벤트 연결/해제
-- patch 실행
+- text input의 `value`
+- checkbox input의 `checked`
+- textarea의 `value`
+- select의 `value`
+- `onInput`과 `onChange`를 통한 상태 반영
 
-비책임:
+### 3.8 Test Layer
 
-- history 정책
-- demo 상태 관리
+Test Layer는 단위 테스트와 기능 테스트를 분리한다.
 
-### 6.4 history layer
+- 단위 테스트: Hook 슬롯, resolver, diff 결과, patch 동작, memo 캐시, form semantics
+- 기능 테스트: 브라우저 부트스트랩, 사용자 이벤트, 루트 상태 전파, unmount cancellation
 
-책임:
+## 4. 핵심 데이터 흐름
 
-- snapshot push
-- undo / redo
-- currentIndex 관리
-- redo 구간 절단
+### 4.1 최초 mount
 
-비책임:
+최초 mount 흐름은 다음과 같다.
 
-- DOM 렌더링
-- diff 계산
+1. 루트 `FunctionComponent` 생성
+2. `mount(root, props)` 호출
+3. Hook dispatcher를 현재 루트로 설정
+4. 루트 `renderFn(props)` 실행
+5. Component Resolver가 자식 stateless component를 전개
+6. 최종 VDOM 생성
+7. VDOM을 실제 DOM으로 변환
+8. DOM을 root에 부착
+9. commit 단계에서 effect 실행
 
-### 6.5 engine layer
+### 4.2 상태 업데이트
 
-책임:
+상태 업데이트 흐름은 다음과 같다.
 
-- core facade 제공
-- current vnode 관리
-- diff mode와 history를 통합
-- inspect 데이터 제공
+1. `setState` 호출
+2. Hook 슬롯 값 갱신
+3. update 예약 또는 즉시 실행
+4. `hookCursor` 초기화
+5. 루트 `renderFn` 재실행
+6. Component Resolver가 자식 stateless component를 전개
+7. 이전 VDOM과 새 VDOM diff
+8. patch 적용
+9. 필요한 cleanup 수행
+10. 새 effect 실행
 
-비책임:
+### 4.3 memo 재사용
 
-- HTML sanitize UI
-- 패널 레이아웃
+`useMemo`는 렌더 중 계산되지만, dependency가 같으면 이전 슬롯의 값을 그대로 사용한다.
+이때 VDOM 자체를 저장하는 것이 아니라 파생 계산값을 저장하는 데 사용한다.
 
-### 6.6 demo layer
+## 5. 상태 소유권 규칙
 
-책임:
+v3는 실제 React처럼 각 컴포넌트가 독립 상태를 갖는 구조를 채택하지 않는다.
+대신 아래 규칙을 강제한다.
 
-- 패널 렌더링
-- 편집기와 버튼 처리
-- scenario 선택
-- 로그 표시
-- 테스트 실행 트리거
+- 모든 상태는 루트에만 존재한다.
+- 자식은 상태를 만들거나 저장하지 않는다.
+- 자식은 `props`를 받아 VDOM을 반환하는 pure rendering function이다.
+- 여러 자식이 공유해야 하는 값은 루트에서 계산 후 props로 전달한다.
 
-비책임:
+이 규칙은 과제의 `Lifting State Up` 의도를 구현 수준에서 강제하기 위한 것이다.
 
-- core 내부 상태 직접 변경
-- patch 알고리즘 구현
+## 6. unmount 규칙
 
-## 7. 핵심 데이터 계약
+루트 `FunctionComponent`는 종료 시 다음 순서를 따라야 한다.
 
-### 7.1 VNode canonical shape
+1. 등록된 effect cleanup 실행
+2. Hook dispatcher 해제
+3. 내부 상태를 unmounted 상태로 전환
+4. 필요 시 root DOM 비우기
 
-프로젝트 전체에서 vnode는 아래 shape를 canonical form으로 사용한다.
+`unmount`는 선택 기능이 아니라 effect lifecycle 완결을 위한 필수 계약이다.
 
-```js
-{
-  type: "element" | "text",
-  tag: "div" | null,
-  key: "item-1" | null,
-  props: {
-    id: "app",
-    className: "container",
-    style: "color:red",
-    value: "hello",
-    checked: true,
-    "data-id": "123"
-  },
-  events: {
-    click: handleClick
-  },
-  children: [],
-  text: null,
-  meta: {
-    source: "dom" | "declarative",
-    isWhitespaceOnly: false,
-    path: [0, 1]
-  }
-}
-```
+## 7. Hook 사용 규칙
 
-정책:
+Hook Runtime은 다음 규칙을 전제로 설계한다.
 
-- `type === "text"`이면 `tag`는 `null`, `children`은 빈 배열, `text`는 문자열이다.
-- `type === "element"`이면 `text`는 `null`이다.
-- `key`는 항상 최상위 필드에 저장한다.
-- `key`는 sibling 집합에서 노드 identity를 표현하는 핵심 필드다.
-- `props.key`는 허용하지 않으며 입력 시 `key`로 승격한 뒤 제거한다.
-- 이벤트는 `events` 필드에 저장한다.
-- DOM -> VDOM 변환 결과의 `events`는 항상 빈 객체다.
-- `class`는 `className`으로 정규화한다.
-- `style`은 문자열로 유지한다. 객체 style 정규화는 1차 범위에 포함하지 않는다.
-- `data-*` 속성은 일반 props로 유지한다.
+- Hook은 루트 렌더 함수 본문에서만 호출한다.
+- 조건문 내부 Hook 호출은 지원하지 않는다.
+- 반복문 내부 Hook 호출은 지원하지 않는다.
+- 자식 컴포넌트 내부 Hook 호출은 지원하지 않는다.
+- Hook 수와 호출 순서는 렌더마다 같아야 한다.
 
-### 7.2 `h()` 정규화 규칙
+위 규칙을 위반하면 명시적 오류를 던져야 한다.
 
-`h(tag, props, ...children)`는 다음 규칙으로 입력을 정규화한다.
+## 8. update scheduling
 
-- `props`가 없으면 빈 객체를 사용한다.
-- `key`는 최상위 필드로 분리한다.
-- `onClick`, `onInput` 같은 이벤트 prop은 `events.click`, `events.input`으로 정규화한다.
-- string, number child는 text vnode로 변환한다.
-- 배열 child는 flatten 한다.
-- `null`, `undefined`, `false` child는 무시한다.
-- `true`는 렌더링하지 않는다.
+기본 전략은 단순하고 설명 가능한 업데이트 모델이다.
 
-### 7.3 Patch canonical shape
+- 기본 구현은 즉시 update를 허용한다.
+- 확장 구현은 microtask 기반 batching을 둘 수 있다.
+- 같은 tick 안에서 여러 `setState`가 호출되면 마지막 예약된 한 번의 update로 합칠 수 있다.
 
-patch는 flat list로 표현하며 다음 연산을 공식 지원한다.
+batching은 권장 기능이지만, 구현하더라도 Hook 규칙과 effect 순서를 깨뜨리면 안 된다.
 
-```js
-[
-  { type: "SET_PROP", path: [0], name: "className", value: "box selected" },
-  { type: "REMOVE_PROP", path: [0], name: "title" },
-  { type: "SET_TEXT", path: [1, 0], value: "changed" },
-  { type: "INSERT_CHILD", path: [1], index: 2, node: vnode },
-  { type: "REMOVE_CHILD", path: [1], index: 0 },
-  { type: "MOVE_CHILD", path: [1], fromIndex: 3, toIndex: 1, key: "b" },
-  { type: "REPLACE_NODE", path: [2], node: vnode },
-  { type: "SET_EVENT", path: [3], name: "click", handler: fn },
-  { type: "REMOVE_EVENT", path: [3], name: "click" }
-]
-```
+## 9. 기존 코드와의 연결
 
-정책:
+v3는 기존 저장소의 학습 자산을 최대한 활용한다.
 
-- `path`는 루트 기준 child index 경로다.
-- `SET_PROP`, `REMOVE_PROP`, `SET_TEXT`, `REPLACE_NODE`, `SET_EVENT`, `REMOVE_EVENT`의 `path`는 대상 노드를 가리킨다.
-- `INSERT_CHILD`, `REMOVE_CHILD`, `MOVE_CHILD`의 `path`는 부모 노드를 가리킨다.
-- `auto` 또는 `keyed` 모드에서는 재사용 가능한 keyed child에 대해 `MOVE_CHILD`를 우선 사용한다.
-- `index` 모드에서는 재정렬을 `REMOVE_CHILD + INSERT_CHILD` 조합으로 표현할 수 있다.
-- key가 없는 child는 `auto` 모드에서도 위치 기반 비교 대상으로 처리한다.
+- `src/core/vnode`: 선언형 VDOM 생성
+- `src/core/reconciler`: diff 계산
+- `src/core/renderer-dom`: DOM 생성 및 patch
+- `src/core/engine`: low-level facade와 inspect/history 자산 재사용 후보
 
-### 7.4 History shape
+다만 `engine`은 현재 일반 VDOM 엔진 중심이므로, v3에서는 그 위에 `FunctionComponent`와 Hook Runtime을 얹는 방향을 우선한다.
 
-```js
-{
-  entries: [vnode1, vnode2, vnode3],
-  currentIndex: 1,
-  maxLength: null
-}
-```
+v3 구현 완료 시 공개 API는 `src/index.js`에서 노출하고, 브라우저 데모는 `src/app/main.js`를 기준 엔트리포인트로 삼는다.
 
-정책:
+## 10. 권장 파일 구조
 
-- `entries[currentIndex]`가 현재 상태다.
-- 새 상태 push 전에 `currentIndex` 뒤의 redo 구간을 제거한다.
-- `maxLength`가 설정된 경우 가장 오래된 snapshot부터 제거한다.
-- history에는 patch가 아니라 vnode snapshot을 저장한다.
+구현 시 권장 구조는 다음과 같다.
 
-## 8. DOM / 이벤트 모델
+- `src/core/runtime/FunctionComponent.js`
+- `src/core/runtime/currentDispatcher.js`
+- `src/core/runtime/assertActiveDispatcher.js`
+- `src/core/runtime/assertRootOnlyHookUsage.js`
+- `src/core/runtime/resolveComponentTree.js`
+- `src/core/runtime/commitEffects.js`
+- `src/core/runtime/areHookDepsEqual.js`
+- `src/core/runtime/scheduleUpdate.js`
+- `src/core/runtime/unmountComponent.js`
+- `src/core/runtime/hooks/useState.js`
+- `src/core/runtime/hooks/useEffect.js`
+- `src/core/runtime/hooks/useMemo.js`
+- `src/core/runtime/createApp.js`
+- `src/app/main.js`
+- `src/app/...`
 
-### 8.1 DOM -> VDOM의 한계
+기존 `src/core/vnode`, `src/core/reconciler`, `src/core/renderer-dom`은 유지하며 확장한다.
 
-실제 DOM에서 이미 바인딩된 JavaScript 이벤트 리스너는 표준 API만으로 안전하게 역추적할 수 없다.
-따라서 `domToVNode()`는 이벤트를 복원하지 않는다.
+## 11. 앱 통합 아키텍처
 
-이 한계는 결함이 아니라 설계 제약이며, 문서와 데모에서 명시적으로 설명한다.
+앱과 라이브러리의 경계는 아래와 같이 고정한다.
 
-### 8.2 이벤트 검증 전략
+- 라이브러리 공개 경계: `src/index.js`
+- 데모 앱 진입점: `src/app/main.js`
+- 데모 HTML root id: `app`
 
-이벤트는 선언형 경로에서만 canonical 하게 관리한다.
+`src/app/main.js`의 책임은 다음과 같다.
 
-- `h()`가 이벤트 prop을 `events`로 저장한다.
-- renderer가 `events`를 실제 DOM 리스너로 연결한다.
-- patch가 `SET_EVENT`, `REMOVE_EVENT`를 통해 교체/제거한다.
+- 문서 준비 상태 확인
+- `#app` root 조회
+- root 부재 시 명시적 오류 발생
+- `createApp()` 호출
+- 반환된 앱 인스턴스의 `mount()` 실행
+- 필요 시 종료 시점에 `unmount()` 연결
 
-사용자 입력 HTML의 인라인 이벤트는 엔진의 지원 범위가 아니다.
+`createApp()`의 책임은 다음과 같다.
 
-## 9. 안전한 HTML 편집 정책
+- 공개 API 수준 옵션 정규화
+- `FunctionComponent` 생성
+- 기존 engine/facade와 runtime 연결
+- `mount`, `updateProps`, `unmount`, `getComponent` 노출
+- 선택 보조 기능으로 `inspect`를 노출할 수 있으며, 기본 구현에서 생략 가능하다.
 
-HTML 편집기는 다음 파이프라인을 따른다.
+## 12. 예약 작업과 종료 처리
 
-1. 사용자 입력 문자열 수집
-2. 파서 또는 template element로 DOM 생성
-3. sanitize 수행
-4. sanitize 된 DOM만 test panel에 반영
-5. sanitize 된 DOM만 patch 비교 대상으로 사용
+update scheduling과 unmount는 함께 정의되어야 한다.
 
-최소 sanitize 정책:
+- `scheduleUpdate`는 batching 전략에 따라 즉시 또는 microtask로 flush를 예약한다.
+- `unmountComponent`는 예약된 flush가 있으면 취소 상태로 전환해야 한다.
+- 취소된 flush는 실행되더라도 DOM patch를 수행하면 안 된다.
+- commit 전 pending effect는 폐기한다.
+- commit 완료된 effect에 대해서만 cleanup을 실행한다.
 
-- `<script>` 제거
-- `<iframe>`, `<object>`, `<embed>` 제거
-- `on*` 속성 제거
-- `href`, `src`, `xlink:href`의 `javascript:` 차단
+## 13. 아키텍처 승인 기준
 
-이 정책은 demo에서 강제되며 core의 기본 책임은 아니다.
-단, sanitize 유틸은 재사용 가능한 보조 모듈로 둘 수 있다.
+아래 조건이 충족되면 v3 아키텍처가 올바르게 반영된 것으로 본다.
 
-## 10. 모듈 경계와 권장 파일 구조
-
-```txt
-/project
-  /docs
-    requirements.md
-    architecture.md
-    api-spec.md
-
-  /src
-    /core
-      /vnode
-        index.js
-        h.js
-        normalizeChildren.js
-
-      /reconciler
-        diff.js
-        diffProps.js
-        diffChildren.js
-        patchTypes.js
-
-      /renderer-dom
-        createDom.js
-        applyProps.js
-        applyEvents.js
-        patch.js
-        domToVNode.js
-
-      /history
-        createHistory.js
-        historyApi.js
-
-      /engine
-        createEngine.js
-        inspect.js
-
-      /shared
-        constants.js
-        utils.js
-
-    /demo
-      main.js
-      app.js
-      panels.js
-      controls.js
-      logger.js
-      scenarioRunner.js
-      testRunner.js
-      sanitizeHtml.js
-
-    /samples
-      initialHtml.js
-      declarativeScenarios.js
-
-    /tests
-      vnode.test.js
-      reconciler.test.js
-      patch.test.js
-      history.test.js
-      engine.test.js
-      integration.test.js
-```
-
-## 11. 모듈별 책임
-
-### 11.1 `core/vnode`
-
-- vnode 생성
-- child normalization
-- key / event 정규화
-
-### 11.2 `core/reconciler`
-
-- vnode 비교
-- patch 생성
-- diff mode 분기
-
-### 11.3 `core/renderer-dom`
-
-- DOM 생성
-- patch 실행
-- DOM -> VDOM 변환
-- props/property/events 반영
-
-### 11.4 `core/history`
-
-- snapshot 이력
-- undo / redo
-
-### 11.5 `core/engine`
-
-- facade API
-- 현재 상태 관리
-- inspect 데이터 제공
-
-### 11.6 `demo`
-
-- UI 패널
-- HTML 편집
-- scenario 선택
-- 테스트 실행과 로그 표시
-
-## 12. 확장 포인트
-
-현재 구조는 다음 확장을 가로막지 않아야 한다.
-
-- function component 유사 구조
-- fragment
-- ref
-- update queue
-- scheduler
-- hooks
-- custom renderer
-- devtools inspect API 확장
-
-이를 위해 다음 금지 사항을 유지한다.
-
-- vnode 생성과 DOM 생성을 한 함수에 혼합하지 않는다.
-- diff와 patch를 하나의 모듈로 합치지 않는다.
-- history를 demo UI state 안에 숨기지 않는다.
-- demo 전역 변수가 core 상태의 소유자가 되지 않게 한다.
-- 공개 API가 내부 파일 경로를 직접 노출하지 않게 한다.
-
-## 13. 비목표
-
-이번 아키텍처는 다음을 즉시 구현하지 않는다.
-
-- Fiber 구조
-- Concurrent scheduling
-- synthetic event delegation 전체 재현
-- component lifecycle
-- JSX transform
-
-다만 계층 구조는 위 기능을 나중에 추가할 수 있도록 열어 둔다.
+- 루트 전용 `FunctionComponent`가 존재한다.
+- Hook 상태가 루트 `hooks` 배열에 저장된다.
+- 자식 컴포넌트는 props-only pure function으로 유지된다.
+- 자식 컴포넌트 전개를 담당하는 resolver 단계가 존재한다.
+- VDOM 생성과 DOM 반영이 분리되어 있다.
+- DOM 갱신이 diff/patch 기반으로 수행된다.
+- effect 실행이 DOM 반영 뒤 commit 단계에서 처리된다.
+- `unmount` 시 cleanup과 루트 정리가 수행된다.
+- `src/app/main.js`가 `#app` root를 기준으로 앱을 부트스트랩한다.
