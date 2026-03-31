@@ -18,6 +18,8 @@ export function CardShowcase(props) {
     onMousemove: props.onPointerMove ? (event) => props.onPointerMove(event, card.id) : undefined,
     onMouseleave: props.onPointerLeave ? (event) => props.onPointerLeave(event, card.id) : undefined,
   },
+    h("div", { className: "card-light-frame is-detail" }),
+    h("div", { className: "card-prism-layer is-detail" }),
     h("div", { className: "card-glare-layer is-detail" }),
     h("img", {
       id: "detail-card-image",

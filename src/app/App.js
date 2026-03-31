@@ -143,10 +143,11 @@ function applyInteractiveStyle(element, options) {
     ? `transform: perspective(960px) rotateX(${options.rotateX}deg) rotateY(${options.rotateY}deg) scale3d(1.02, 1.02, 1.02);`
     : "transform: perspective(960px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);";
   const glare = options.glareEnabled
-    ? `--glare-x: ${options.glareX}%; --glare-y: ${options.glareY}%; --glare-opacity: 0.92;`
-    : "--glare-x: 50%; --glare-y: 50%; --glare-opacity: 0;";
+    ? `--glare-x: ${options.glareX}%; --glare-y: ${options.glareY}%; --glare-opacity: 0.92; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%;`
+    : "--glare-x: 50%; --glare-y: 50%; --glare-opacity: 0; --glare-rotation: 0deg; --surface-shift: 0%;";
+  const light = `--light-x: ${options.glareX}%; --light-y: ${options.glareY}%;`;
 
-  element.setAttribute("style", `${tilt} ${glare}`);
+  element.setAttribute("style", `${tilt} ${glare} ${light}`);
 }
 
 export function App() {
@@ -389,6 +390,8 @@ export function App() {
       rotateY,
       glareX: Math.round(relativeX * 100),
       glareY: Math.round(relativeY * 100),
+      glareRotation: Math.round((relativeX - 0.5) * 36),
+      surfaceShift: Math.round((relativeY - 0.5) * 18),
     });
   }
 

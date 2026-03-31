@@ -25,6 +25,10 @@
       --glare-x: 50%;
       --glare-y: 50%;
       --glare-opacity: 0;
+      --glare-rotation: 0deg;
+      --surface-shift: 0%;
+      --light-x: 50%;
+      --light-y: 50%;
     }
 
     * {
@@ -61,6 +65,11 @@
     button {
       cursor: pointer;
       border: 0;
+    }
+
+    select,
+    option {
+      color: #eff5ff;
     }
 
     img {
@@ -346,9 +355,14 @@
       padding: 12px 14px;
       border-radius: 14px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.05);
-      color: white;
+      background: rgba(8, 17, 31, 0.92);
+      color: #eef4ff;
       outline: none;
+    }
+
+    .field select option {
+      background: #0d182a;
+      color: #eef4ff;
     }
 
     .checkbox-field {
@@ -387,7 +401,39 @@
       overflow: hidden;
       border-radius: 22px;
       padding: 0;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(10, 19, 35, 0.86));
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.12), transparent 48%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(10, 19, 35, 0.86));
+      isolation: isolate;
+    }
+
+    .card-light-frame,
+    .card-prism-layer,
+    .card-glare-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .card-light-frame {
+      z-index: 1;
+      border-radius: inherit;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.18), transparent 24%, transparent 78%, rgba(255, 255, 255, 0.1)),
+        radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.16), transparent 34%);
+      opacity: 0.92;
+    }
+
+    .card-prism-layer {
+      z-index: 2;
+      border-radius: inherit;
+      background:
+        linear-gradient(calc(135deg + var(--glare-rotation)), rgba(124, 92, 255, 0.24), rgba(56, 189, 248, 0.12) 34%, rgba(245, 158, 11, 0.18) 64%, rgba(255, 255, 255, 0.08) 100%),
+        linear-gradient(180deg, rgba(7, 14, 29, 0.05), rgba(7, 14, 29, 0.42));
+      mix-blend-mode: screen;
+      opacity: 0.72;
+      transform: translate3d(calc(var(--surface-shift) * 0.18), calc(var(--surface-shift) * -0.12), 0);
     }
 
     .card-image,
@@ -396,38 +442,59 @@
       width: 100%;
       object-fit: contain;
       position: relative;
-      z-index: 1;
+      z-index: 3;
     }
 
     .card-glare-layer {
-      position: absolute;
-      inset: 0;
-      z-index: 2;
-      pointer-events: none;
+      z-index: 4;
       background:
-        radial-gradient(circle at var(--glare-x) var(--glare-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.44)), transparent 24%),
-        linear-gradient(135deg, rgba(124, 92, 255, 0.24), transparent 38%, rgba(56, 189, 248, 0.18));
+        radial-gradient(circle at var(--light-x) var(--light-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.42)), transparent 20%),
+        radial-gradient(circle at calc(var(--light-x) + 8%) calc(var(--light-y) - 10%), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.18)), transparent 30%);
       mix-blend-mode: screen;
+      opacity: 0.95;
     }
 
     .card-glare-layer.is-detail {
       background:
-        radial-gradient(circle at var(--glare-x) var(--glare-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.52)), transparent 26%),
-        linear-gradient(135deg, rgba(124, 92, 255, 0.28), transparent 40%, rgba(245, 158, 11, 0.16));
+        radial-gradient(circle at var(--light-x) var(--light-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.56)), transparent 24%),
+        radial-gradient(circle at calc(var(--light-x) + 10%) calc(var(--light-y) - 12%), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.24)), transparent 32%);
+    }
+
+    .card-light-frame.is-detail {
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.22), transparent 28%, transparent 76%, rgba(255, 255, 255, 0.12)),
+        radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.24), transparent 30%),
+        radial-gradient(circle at 76% 84%, rgba(56, 189, 248, 0.18), transparent 34%);
+    }
+
+    .card-prism-layer.is-detail {
+      background:
+        linear-gradient(calc(140deg + var(--glare-rotation)), rgba(124, 92, 255, 0.28), rgba(56, 189, 248, 0.14) 34%, rgba(245, 158, 11, 0.18) 66%, rgba(255, 255, 255, 0.1) 100%),
+        linear-gradient(180deg, rgba(7, 14, 29, 0.02), rgba(7, 14, 29, 0.3));
     }
 
     .card-overlay,
     .detail-card-caption {
       position: relative;
-      z-index: 3;
+      z-index: 5;
       display: grid;
       gap: 8px;
       padding: 16px;
     }
 
+    .card-overlay {
+      background: linear-gradient(180deg, transparent 0%, rgba(6, 12, 24, 0.26) 42%, rgba(6, 12, 24, 0.82) 100%);
+    }
+
     .card-name {
       font-size: 24px;
       letter-spacing: -0.04em;
+      color: #f5f9ff;
+      text-shadow: 0 10px 18px rgba(0, 0, 0, 0.46);
+    }
+
+    .card-number {
+      color: #dbe8fb;
     }
 
     .card-type-row,
@@ -507,8 +574,14 @@
       padding: 22px;
     }
 
+    .detail-card-caption {
+      background: linear-gradient(180deg, transparent 0%, rgba(6, 12, 24, 0.12) 36%, rgba(6, 12, 24, 0.78) 100%);
+    }
+
     .detail-card-name {
       font-size: 38px;
+      color: #f8fbff;
+      text-shadow: 0 12px 20px rgba(0, 0, 0, 0.42);
     }
 
     .detail-card-number {

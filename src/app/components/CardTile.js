@@ -33,6 +33,8 @@ export function CardTile(props) {
       className: "card-visual-button",
       onClick: () => props.onSelect(card.id),
     },
+      h("div", { className: "card-light-frame" }),
+      h("div", { className: "card-prism-layer" }),
       h("div", { className: "card-glare-layer" }),
       h("img", {
         className: "card-image",
