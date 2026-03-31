@@ -5,6 +5,7 @@ import { runHistoryTests } from "../src/tests/history.test.js";
 import { runInspectTests } from "../src/tests/inspect.test.js";
 import { runIntegrationTests } from "../src/tests/integration.test.js";
 import { runPatchTests } from "../src/tests/patch.test.js";
+import { runPokeApiClientTests } from "../src/tests/pokeApiClient.test.js";
 import { runReconcilerTests } from "../src/tests/reconciler.test.js";
 import { runRuntimeTests } from "../src/tests/runtime.test.js";
 import { runUtilsTests } from "../src/tests/utils.test.js";
@@ -16,6 +17,7 @@ const suites = [
   { name: "vnode", run: runVnodeTests },
   { name: "reconciler", run: runReconcilerTests },
   { name: "patch", run: runPatchTests },
+  { name: "pokeApiClient", run: runPokeApiClientTests },
   { name: "history", run: runHistoryTests },
   { name: "engine", run: runEngineTests },
   { name: "integration", run: runIntegrationTests },

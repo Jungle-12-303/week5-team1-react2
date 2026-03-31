@@ -20,6 +20,7 @@ export function CardShowcase(props) {
   },
     h("div", { className: "card-light-frame is-detail" }),
     h("div", { className: "card-prism-layer is-detail" }),
+    h("div", { className: "card-sparkle-layer is-detail" }),
     h("div", { className: "card-glare-layer is-detail" }),
     h("img", {
       id: "detail-card-image",

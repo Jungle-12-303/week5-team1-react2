@@ -33,8 +33,8 @@ function changeValue(element, value) {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function createMountedApp() {
-  globalThis.__CARD_SHOWCASE_DATA_MODE__ = "local";
+function createMountedApp(options = {}) {
+  globalThis.__CARD_SHOWCASE_DATA_MODE__ = options.dataMode ?? "local";
   const root = document.createElement("div");
   const app = createApp({ root, component: App, batching: "microtask" });
   app.mount();
@@ -138,6 +138,30 @@ export async function runAppTests() {
 
       if (root.querySelector("#detail-showcase").getAttribute("data-tilt-enabled") !== "false") {
         throw new Error("Expected detail showcase to reflect the disabled tilt setting.");
+      }
+    }),
+    runCase("card showcase shows a runtime notice when the remote catalog falls back", async () => {
+      const originalFetch = globalThis.fetch;
+
+      globalThis.fetch = () => Promise.reject(new Error("network unavailable"));
+
+      try {
+        const { root } = createMountedApp({ dataMode: "remote" });
+        await flushMicrotasks();
+        await flushMicrotasks();
+
+        const notice = root.querySelector("#runtime-notice-message");
+
+        if (!notice) {
+          throw new Error("Expected a runtime notice to appear when the remote catalog fails.");
+        }
+
+        if (!notice.textContent.includes("fallback gallery")) {
+          throw new Error("Expected the runtime notice to explain that the built-in fallback gallery is active.");
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+        globalThis.__CARD_SHOWCASE_DATA_MODE__ = "local";
       }
     }),
   ]);

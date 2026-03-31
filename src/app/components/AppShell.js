@@ -18,6 +18,12 @@ export function AppShell(props) {
       h("span", { className: "global-status-kicker" }, "Collection Runtime"),
       h("strong", { className: "global-status-message", id: "global-status-message" }, props.lastAction)
     ),
+    props.catalogNotice
+      ? h("section", { className: "runtime-notice-bar", id: "runtime-notice-bar" },
+        h("span", { className: "runtime-notice-label" }, "Catalog Notice"),
+        h("strong", { className: "runtime-notice-message", id: "runtime-notice-message" }, props.catalogNotice)
+      )
+      : null,
     h("main", { className: "service-body" }, props.children),
     h(MobileTabBar, {
       currentPage: props.currentPage,

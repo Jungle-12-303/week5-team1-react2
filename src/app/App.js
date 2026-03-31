@@ -12,6 +12,9 @@ import { CollectionPage } from "./pages/CollectionPage.js";
 import { DetailPage } from "./pages/DetailPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 
+const CATALOG_CACHE_KEY = "card-showcase-catalog-cache";
+const MAX_NATIONAL_DEX = 1025;
+
 function canUseLocalStorage() {
   return typeof localStorage !== "undefined";
 }
@@ -71,6 +74,34 @@ function readStoredFavoriteIds() {
   }
 
   return legacyCards.filter((card) => card && card.isFavorite).map((card) => card.id);
+}
+
+function readCatalogCache() {
+  const parsed = readStoredJson(CATALOG_CACHE_KEY);
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return [];
+  }
+
+  return parsed.map((card) => ({
+    ...card,
+    types: Array.isArray(card.types) ? card.types.slice() : [],
+    baseStats: card.baseStats ? { ...card.baseStats } : null,
+    isFavorite: false,
+  })).filter((card) => Number(card.number) <= MAX_NATIONAL_DEX);
+}
+
+function writeCatalogCache(cards) {
+  if (!canUseLocalStorage() || !Array.isArray(cards) || cards.length === 0) {
+    return;
+  }
+
+  const cachePayload = cards.map((card) => ({
+    ...card,
+    isFavorite: false,
+  }));
+
+  localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(cachePayload));
 }
 
 function mergeFavoriteFlags(cards, favoriteIds) {
@@ -166,11 +197,10 @@ function applyInteractiveStyle(element, options) {
     ? `transform: perspective(960px) rotateX(${options.rotateX}deg) rotateY(${options.rotateY}deg) scale3d(1.02, 1.02, 1.02);`
     : "transform: perspective(960px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);";
   const glare = options.glareEnabled
-    ? `--glare-x: ${options.glareX}%; --glare-y: ${options.glareY}%; --glare-opacity: 0.92; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%;`
-    : "--glare-x: 50%; --glare-y: 50%; --glare-opacity: 0; --glare-rotation: 0deg; --surface-shift: 0%;";
-  const light = `--light-x: ${options.glareX}%; --light-y: ${options.glareY}%;`;
+    ? `--glare-opacity: 0.84; --glare-strength: 1.06; --edge-glow-opacity: 0.42; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%; --shine-shift-x: ${options.shineShiftX}%; --shine-shift-y: ${options.shineShiftY}%; --wave-skew: ${options.waveSkew}deg; --holo-x: ${options.holoX}%; --holo-y: ${options.holoY}%; --sparkle-opacity: ${options.sparkleOpacity};`
+    : "--glare-opacity: 0.3; --glare-strength: 0.42; --edge-glow-opacity: 0.18; --glare-rotation: -6deg; --surface-shift: 0%; --shine-shift-x: 0%; --shine-shift-y: 0%; --wave-skew: 0deg; --holo-x: 50%; --holo-y: 50%; --sparkle-opacity: 0.22;";
 
-  element.setAttribute("style", `${tilt} ${glare} ${light}`);
+  element.setAttribute("style", `${tilt} ${glare}`);
 }
 
 function mergeCardWithDetail(card, detail) {
@@ -219,6 +249,7 @@ export function App() {
   const [detailById, setDetailById] = useState({});
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
+  const [catalogNotice, setCatalogNotice] = useState(null);
 
   const pageItems = useMemo(() => createPageItems(PAGE_META), []);
   const visibleCards = useMemo(() => sortCards(filterCards(cards, {
@@ -254,9 +285,24 @@ export function App() {
     async function loadCatalog() {
       const favoriteIds = readStoredFavoriteIds();
       const dataMode = getDataMode();
+      const cachedCatalog = dataMode === "local" ? [] : readCatalogCache();
 
       setIsLoading(true);
       setLoadError(null);
+      setCatalogNotice(null);
+
+      if (cachedCatalog.length > 0) {
+        const cachedCards = mergeFavoriteFlags(cachedCatalog, favoriteIds);
+
+        if (isActive) {
+          setCards(cachedCards);
+          setSelectedCardId((previousValue) =>
+            cachedCards.some((card) => card.id === previousValue) ? previousValue : cachedCards[0]?.id ?? null
+          );
+          setIsLoading(false);
+          setLastAction(`Loaded ${cachedCards.length} cached cards while refreshing the remote catalog.`);
+        }
+      }
 
       try {
         const remoteCards = dataMode === "local"
@@ -273,7 +319,12 @@ export function App() {
           nextCards.some((card) => card.id === previousValue) ? previousValue : nextCards[0]?.id ?? null
         );
         setIsLoading(false);
+        setCatalogNotice(null);
         setLastAction(`Loaded ${nextCards.length} cards into the showcase.`);
+
+        if (dataMode !== "local") {
+          writeCatalogCache(remoteCards);
+        }
       } catch (error) {
         const fallbackCards = mergeFavoriteFlags(cloneDefaultCards(), favoriteIds);
 
@@ -281,13 +332,20 @@ export function App() {
           return;
         }
 
-        setCards(fallbackCards);
+        const nextCards = cachedCatalog.length > 0 ? mergeFavoriteFlags(cachedCatalog, favoriteIds) : fallbackCards;
+
+        setCards(nextCards);
         setSelectedCardId((previousValue) =>
-          fallbackCards.some((card) => card.id === previousValue) ? previousValue : fallbackCards[0]?.id ?? null
+          nextCards.some((card) => card.id === previousValue) ? previousValue : nextCards[0]?.id ?? null
         );
         setIsLoading(false);
         setLoadError(null);
-        setLastAction(`Remote catalog unavailable, loaded the local fallback gallery instead. ${error.message}`);
+        setCatalogNotice(
+          cachedCatalog.length > 0
+            ? "Remote catalog refresh failed. Showing the last cached collection snapshot."
+            : "Remote catalog failed to load. Showing the built-in fallback gallery."
+        );
+        setLastAction(`Remote catalog unavailable. ${error.message}`);
       }
     }
 
@@ -521,6 +579,7 @@ export function App() {
     setSettings(nextSettings);
     setLoadError(null);
     setDetailError(null);
+    setCatalogNotice(null);
     setLastAction("Card showcase reset to the default gallery state.");
   }
 
@@ -550,18 +609,22 @@ export function App() {
     const rect = element.getBoundingClientRect();
     const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
     const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
-    const rotateY = (relativeX - 0.5) * 18;
-    const rotateX = (0.5 - relativeY) * 16;
+    const rotateY = (relativeX - 0.5) * 14;
+    const rotateX = (0.5 - relativeY) * 12;
 
     applyInteractiveStyle(element, {
       tiltEnabled: settings.tiltEnabled,
       glareEnabled: settings.glareEnabled,
       rotateX,
       rotateY,
-      glareX: Math.round(relativeX * 100),
-      glareY: Math.round(relativeY * 100),
-      glareRotation: Math.round((relativeX - 0.5) * 36),
-      surfaceShift: Math.round((relativeY - 0.5) * 18),
+      glareRotation: Math.round((relativeX - 0.5) * 22),
+      surfaceShift: Math.round((relativeY - 0.5) * 12),
+      shineShiftX: Math.round((relativeX - 0.5) * 28),
+      shineShiftY: Math.round((relativeY - 0.5) * 12),
+      waveSkew: Math.round((relativeX - 0.5) * 10),
+      holoX: Math.round(relativeX * 100),
+      holoY: Math.round(relativeY * 100),
+      sparkleOpacity: (0.34 + Math.abs(relativeX - 0.5) * 0.42 + Math.abs(relativeY - 0.5) * 0.22).toFixed(3),
     });
   }
 
@@ -573,10 +636,11 @@ export function App() {
       glareEnabled: false,
       rotateX: 0,
       rotateY: 0,
-      glareX: 50,
-      glareY: 50,
       glareRotation: 0,
       surfaceShift: 0,
+      shineShiftX: 0,
+      shineShiftY: 0,
+      waveSkew: 0,
     });
   }
 
@@ -680,5 +744,6 @@ export function App() {
     pages: pageItems,
     onNavigate: handleNavigate,
     lastAction,
+    catalogNotice,
   }, renderCurrentPage());
 }

@@ -35,6 +35,7 @@ export function CardTile(props) {
     },
       h("div", { className: "card-light-frame" }),
       h("div", { className: "card-prism-layer" }),
+      h("div", { className: "card-sparkle-layer" }),
       h("div", { className: "card-glare-layer" }),
       h("img", {
         className: "card-image",

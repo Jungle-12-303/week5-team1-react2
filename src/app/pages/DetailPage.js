@@ -103,7 +103,7 @@ export function DetailPage(props) {
         onPointerLeave: props.onPointerLeave,
       }),
       h("div", { className: "detail-side-panel" },
-        h("section", { className: "dashboard-grid detail-kpis" },
+        h("section", { className: "detail-kpi-stack" },
           h(SummaryCard, {
             id: "detail-card-rarity",
             label: "Rarity",

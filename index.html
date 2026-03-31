@@ -22,13 +22,17 @@
       --radius-xl: 28px;
       --radius-lg: 22px;
       --radius-md: 16px;
-      --glare-x: 50%;
-      --glare-y: 50%;
       --glare-opacity: 0;
+      --glare-strength: 0.42;
       --glare-rotation: 0deg;
       --surface-shift: 0%;
-      --light-x: 50%;
-      --light-y: 50%;
+      --shine-shift-x: 0%;
+      --shine-shift-y: 0%;
+      --wave-skew: 0deg;
+      --holo-x: 50%;
+      --holo-y: 50%;
+      --sparkle-opacity: 0.18;
+      --edge-glow-opacity: 0.18;
     }
 
     * {
@@ -88,6 +92,7 @@
 
     .top-nav,
     .global-status-bar,
+    .runtime-notice-bar,
     .panel-card,
     .page-header-card,
     .summary-card,
@@ -188,11 +193,40 @@
         rgba(11, 23, 42, 0.88);
     }
 
+    .runtime-notice-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 18px;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(248, 113, 113, 0.08)),
+        rgba(22, 16, 8, 0.92);
+    }
+
     .global-status-message {
       flex: 1;
       text-align: right;
       font-size: 14px;
       color: white;
+    }
+
+    .runtime-notice-label {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #fcd34d;
+    }
+
+    .runtime-notice-message {
+      flex: 1;
+      margin: 0;
+      text-align: right;
+      font-size: 14px;
+      color: #fff7ed;
     }
 
     .page-header-card {
@@ -308,6 +342,12 @@
       gap: 18px;
     }
 
+    .detail-kpi-stack {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
     .activity-callout {
       display: grid;
       gap: 8px;
@@ -410,6 +450,7 @@
 
     .card-light-frame,
     .card-prism-layer,
+    .card-sparkle-layer,
     .card-glare-layer {
       position: absolute;
       inset: 0;
@@ -422,19 +463,42 @@
       background:
         linear-gradient(140deg, rgba(255, 255, 255, 0.18), transparent 24%, transparent 78%, rgba(255, 255, 255, 0.1)),
         radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.18), transparent 32%),
-        radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.16), transparent 34%);
+        radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.16), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, calc(var(--edge-glow-opacity) * 0.12)), transparent 28%, transparent 72%, rgba(124, 92, 255, calc(var(--edge-glow-opacity) * 0.16)));
       opacity: 0.92;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        inset 0 0 36px rgba(124, 92, 255, calc(var(--edge-glow-opacity) * 0.18));
     }
 
     .card-prism-layer {
       z-index: 2;
       border-radius: inherit;
       background:
-        linear-gradient(calc(135deg + var(--glare-rotation)), rgba(124, 92, 255, 0.24), rgba(56, 189, 248, 0.12) 34%, rgba(245, 158, 11, 0.18) 64%, rgba(255, 255, 255, 0.08) 100%),
+        radial-gradient(circle at var(--holo-x) var(--holo-y), rgba(255, 255, 255, calc(var(--glare-strength) * 0.16)), transparent 26%),
+        linear-gradient(calc(136deg + var(--glare-rotation)), rgba(255, 0, 128, calc(var(--glare-strength) * 0.14)), rgba(124, 92, 255, calc(var(--glare-strength) * 0.18)) 18%, rgba(56, 189, 248, calc(var(--glare-strength) * 0.14)) 36%, rgba(52, 211, 153, calc(var(--glare-strength) * 0.1)) 56%, rgba(250, 204, 21, calc(var(--glare-strength) * 0.14)) 76%, rgba(255, 255, 255, calc(var(--glare-strength) * 0.05)) 100%),
         linear-gradient(180deg, rgba(7, 14, 29, 0.05), rgba(7, 14, 29, 0.42));
       mix-blend-mode: screen;
-      opacity: 0.72;
+      opacity: 0.84;
       transform: translate3d(calc(var(--surface-shift) * 0.18), calc(var(--surface-shift) * -0.12), 0);
+    }
+
+    .card-sparkle-layer {
+      z-index: 3;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(255, 255, 255, calc(var(--sparkle-opacity) * 0.9)), transparent 1.2%),
+        radial-gradient(circle at 32% 68%, rgba(255, 255, 255, calc(var(--sparkle-opacity) * 0.65)), transparent 1%),
+        radial-gradient(circle at 48% 36%, rgba(191, 219, 254, calc(var(--sparkle-opacity) * 0.8)), transparent 1.1%),
+        radial-gradient(circle at 62% 58%, rgba(253, 224, 71, calc(var(--sparkle-opacity) * 0.75)), transparent 1.2%),
+        radial-gradient(circle at 78% 24%, rgba(196, 181, 253, calc(var(--sparkle-opacity) * 0.85)), transparent 1%),
+        radial-gradient(circle at 84% 72%, rgba(255, 255, 255, calc(var(--sparkle-opacity) * 0.7)), transparent 1.1%),
+        radial-gradient(circle at 26% 44%, rgba(250, 204, 21, calc(var(--sparkle-opacity) * 0.62)), transparent 0.9%),
+        radial-gradient(circle at 58% 18%, rgba(255, 255, 255, calc(var(--sparkle-opacity) * 0.76)), transparent 0.95%),
+        radial-gradient(circle at 72% 46%, rgba(125, 211, 252, calc(var(--sparkle-opacity) * 0.64)), transparent 0.9%);
+      mix-blend-mode: screen;
+      opacity: 0.92;
+      transform: translate3d(calc(var(--shine-shift-x) * 0.18), calc(var(--shine-shift-y) * -0.18), 0);
     }
 
     .card-image,
@@ -443,41 +507,75 @@
       width: 100%;
       object-fit: contain;
       position: relative;
-      z-index: 3;
+      z-index: 4;
     }
 
     .card-glare-layer {
-      z-index: 4;
+      z-index: 5;
+      inset: -34%;
+      border-radius: inherit;
       background:
-        radial-gradient(circle at var(--light-x) var(--light-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.42)), transparent 20%),
-        radial-gradient(circle at calc(var(--light-x) + 8%) calc(var(--light-y) - 10%), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.18)), transparent 30%);
+        radial-gradient(circle at var(--holo-x) var(--holo-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.14 + 0.03)), transparent 20%),
+        linear-gradient(
+          calc(126deg + var(--glare-rotation)),
+          transparent 36%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.03 + 0.01)) 44%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.34 + 0.04)) 49%,
+          rgba(186, 230, 253, calc(var(--glare-opacity) * 0.16 + 0.03)) 53%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.03 + 0.01)) 58%,
+          transparent 66%
+        );
       mix-blend-mode: screen;
-      opacity: 0.95;
+      opacity: 0.84;
+      transform:
+        translate3d(var(--shine-shift-x), var(--shine-shift-y), 0)
+        skewX(var(--wave-skew));
+      filter: blur(1.25px);
     }
 
     .card-glare-layer.is-detail {
+      inset: -38%;
+      border-radius: inherit;
       background:
-        radial-gradient(circle at var(--light-x) var(--light-y), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.56)), transparent 24%),
-        radial-gradient(circle at calc(var(--light-x) + 10%) calc(var(--light-y) - 12%), rgba(255, 255, 255, calc(var(--glare-opacity) * 0.24)), transparent 32%);
+        radial-gradient(circle at 20% 16%, rgba(255, 255, 255, calc(var(--glare-opacity) * 0.15 + 0.04)), transparent 24%),
+        linear-gradient(
+          calc(130deg + var(--glare-rotation)),
+          transparent 36%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.04 + 0.02)) 44%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.3 + 0.04)) 49%,
+          rgba(196, 181, 253, calc(var(--glare-opacity) * 0.14 + 0.03)) 53%,
+          rgba(255, 255, 255, calc(var(--glare-opacity) * 0.04 + 0.02)) 58%,
+          transparent 66%
+        );
     }
 
     .card-light-frame.is-detail {
       background:
         linear-gradient(140deg, rgba(255, 255, 255, 0.22), transparent 28%, transparent 76%, rgba(255, 255, 255, 0.12)),
         radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.24), transparent 30%),
-        radial-gradient(circle at 76% 84%, rgba(56, 189, 248, 0.18), transparent 34%);
+        radial-gradient(circle at 76% 84%, rgba(56, 189, 248, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, calc(var(--edge-glow-opacity) * 0.16)), transparent 26%, transparent 74%, rgba(124, 92, 255, calc(var(--edge-glow-opacity) * 0.22)));
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+        inset 0 0 54px rgba(124, 92, 255, calc(var(--edge-glow-opacity) * 0.24));
     }
 
     .card-prism-layer.is-detail {
       background:
-        linear-gradient(calc(140deg + var(--glare-rotation)), rgba(124, 92, 255, 0.28), rgba(56, 189, 248, 0.14) 34%, rgba(245, 158, 11, 0.18) 66%, rgba(255, 255, 255, 0.1) 100%),
+        radial-gradient(circle at var(--holo-x) var(--holo-y), rgba(255, 255, 255, calc(var(--glare-strength) * 0.2)), transparent 24%),
+        linear-gradient(calc(142deg + var(--glare-rotation)), rgba(255, 0, 128, calc(var(--glare-strength) * 0.16)), rgba(124, 92, 255, calc(var(--glare-strength) * 0.2)) 18%, rgba(56, 189, 248, calc(var(--glare-strength) * 0.16)) 36%, rgba(52, 211, 153, calc(var(--glare-strength) * 0.12)) 56%, rgba(250, 204, 21, calc(var(--glare-strength) * 0.16)) 76%, rgba(255, 255, 255, calc(var(--glare-strength) * 0.08)) 100%),
         linear-gradient(180deg, rgba(7, 14, 29, 0.02), rgba(7, 14, 29, 0.3));
+    }
+
+    .card-sparkle-layer.is-detail {
+      opacity: 1;
+      transform: translate3d(calc(var(--shine-shift-x) * 0.24), calc(var(--shine-shift-y) * -0.22), 0) scale(1.06);
     }
 
     .card-overlay,
     .detail-card-caption {
       position: relative;
-      z-index: 5;
+      z-index: 6;
       display: grid;
       gap: 8px;
       padding: 16px;
@@ -675,6 +773,7 @@
       .detail-layout > *:first-child {
         grid-column: 1 / -1;
       }
+
     }
 
     @media (max-width: 760px) {
@@ -691,6 +790,7 @@
       }
 
       .global-status-bar,
+      .runtime-notice-bar,
       .page-header-card {
         align-items: flex-start;
         flex-direction: column;
@@ -700,11 +800,19 @@
         text-align: left;
       }
 
+      .runtime-notice-message {
+        text-align: left;
+      }
+
       .dashboard-grid,
       .toolbar-grid,
       .settings-grid,
       .dashboard-two-column,
       .detail-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-kpi-stack {
         grid-template-columns: 1fr;
       }
 

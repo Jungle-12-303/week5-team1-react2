@@ -6,6 +6,7 @@
 const API_ROOT = "https://pokeapi.co/api/v2";
 const ARTWORK_ROOT = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork";
 const THUMB_ROOT = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon";
+const MAX_NATIONAL_DEX = 1025;
 const IGNORED_TYPES = new Set(["unknown", "shadow"]);
 const TYPE_ORDER = [
   "normal",
@@ -109,11 +110,18 @@ async function fetchTypeMap(fetchImpl) {
   return typeMap;
 }
 
+function normalizeName(name) {
+  return name
+    .split("-")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
 export async function fetchPokemonCatalog(fetchImpl = globalThis.fetch) {
   assertFetch(fetchImpl);
 
   const [listData, typeMap] = await Promise.all([
-    readJson(fetchImpl(`${API_ROOT}/pokemon?limit=100000&offset=0`)),
+    readJson(fetchImpl(`${API_ROOT}/pokemon?limit=${MAX_NATIONAL_DEX}&offset=0`)),
     fetchTypeMap(fetchImpl),
   ]);
 
@@ -121,7 +129,7 @@ export async function fetchPokemonCatalog(fetchImpl = globalThis.fetch) {
     .map((item) => {
       const pokemonId = getPokemonIdFromUrl(item.url);
 
-      if (!pokemonId) {
+      if (!pokemonId || pokemonId > MAX_NATIONAL_DEX) {
         return null;
       }
 
@@ -131,7 +139,7 @@ export async function fetchPokemonCatalog(fetchImpl = globalThis.fetch) {
 
       return {
         id: createCardId(number),
-        name: item.name.charAt(0).toUpperCase() + item.name.slice(1),
+        name: normalizeName(item.name),
         number,
         imageUrl: sprites.imageUrl,
         thumbUrl: sprites.thumbUrl,
