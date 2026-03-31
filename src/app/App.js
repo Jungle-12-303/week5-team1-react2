@@ -1,10 +1,11 @@
 /*
  * Responsibility:
- * - 카드 컬렉션 쇼케이스 서비스의 루트 상태와 페이지 전환을 관리한다.
+ * - 카드 컬렉션 쇼케이스 서비스의 루트 상태, 데이터 로딩, 페이지 전환을 관리한다.
  */
 
 import { h, useEffect, useMemo, useState } from "../index.js";
 import { CARD_LIBRARY, DEFAULT_SETTINGS, PAGE_META, TYPE_LABELS } from "./data/cardLibrary.js";
+import { fetchPokemonCatalog, fetchPokemonDetail } from "./data/pokeApiClient.js";
 import { AppShell } from "./components/AppShell.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { CollectionPage } from "./pages/CollectionPage.js";
@@ -15,8 +16,16 @@ function canUseLocalStorage() {
   return typeof localStorage !== "undefined";
 }
 
+function getDataMode() {
+  return globalThis.__CARD_SHOWCASE_DATA_MODE__ === "local" ? "local" : "remote";
+}
+
 function cloneDefaultCards() {
-  return CARD_LIBRARY.map((card) => ({ ...card, types: card.types.slice() }));
+  return CARD_LIBRARY.map((card) => ({
+    ...card,
+    types: card.types.slice(),
+    baseStats: card.baseStats ? { ...card.baseStats } : null,
+  }));
 }
 
 function readStoredJson(key) {
@@ -48,16 +57,30 @@ function parseStoredSettings() {
   };
 }
 
-function parseStoredCards() {
-  const parsed = readStoredJson("card-showcase-cards");
+function readStoredFavoriteIds() {
+  const explicitIds = readStoredJson("card-showcase-favorites");
 
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    return cloneDefaultCards();
+  if (Array.isArray(explicitIds)) {
+    return explicitIds;
   }
 
-  return parsed.map((card) => ({
+  const legacyCards = readStoredJson("card-showcase-cards");
+
+  if (!Array.isArray(legacyCards)) {
+    return [];
+  }
+
+  return legacyCards.filter((card) => card && card.isFavorite).map((card) => card.id);
+}
+
+function mergeFavoriteFlags(cards, favoriteIds) {
+  const favoriteSet = new Set(favoriteIds);
+
+  return cards.map((card) => ({
     ...card,
     types: Array.isArray(card.types) ? card.types.slice() : [],
+    baseStats: card.baseStats ? { ...card.baseStats } : null,
+    isFavorite: favoriteSet.has(card.id),
   }));
 }
 
@@ -150,9 +173,39 @@ function applyInteractiveStyle(element, options) {
   element.setAttribute("style", `${tilt} ${glare} ${light}`);
 }
 
+function mergeCardWithDetail(card, detail) {
+  if (!card) {
+    return null;
+  }
+
+  if (!detail) {
+    return card;
+  }
+
+  return {
+    ...card,
+    types: detail.types?.length ? detail.types : card.types,
+    height: detail.height ?? card.height,
+    weight: detail.weight ?? card.weight,
+    baseStats: detail.baseStats ?? card.baseStats,
+    flavor: detail.flavor ?? card.flavor,
+  };
+}
+
+function createLocalDetail(card) {
+  return {
+    types: card.types.slice(),
+    height: card.height,
+    weight: card.weight,
+    baseStats: card.baseStats ? { ...card.baseStats } : null,
+    flavor: card.flavor,
+  };
+}
+
 export function App() {
-  const [settings, setSettings] = useState(() => parseStoredSettings());
-  const [currentPage, setCurrentPage] = useState(() => parseStoredSettings().defaultPage ?? "dashboard");
+  const initialSettings = parseStoredSettings();
+  const [settings, setSettings] = useState(() => initialSettings);
+  const [currentPage, setCurrentPage] = useState(() => initialSettings.defaultPage ?? "dashboard");
   const [cards, setCards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -160,8 +213,12 @@ export function App() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [sortMode, setSortMode] = useState(() => parseStoredSettings().defaultSortMode ?? "number");
+  const [sortMode, setSortMode] = useState(() => initialSettings.defaultSortMode ?? "number");
   const [lastAction, setLastAction] = useState("Loading the card showcase library.");
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  const [detailById, setDetailById] = useState({});
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
 
   const pageItems = useMemo(() => createPageItems(PAGE_META), []);
   const visibleCards = useMemo(() => sortCards(filterCards(cards, {
@@ -170,7 +227,8 @@ export function App() {
     favoritesOnly,
   }), sortMode), [cards, favoritesOnly, searchKeyword, sortMode, typeFilter]);
   const favoriteCount = useMemo(() => cards.filter((card) => card.isFavorite).length, [cards]);
-  const selectedCard = useMemo(() => cards.find((card) => card.id === selectedCardId) ?? null, [cards, selectedCardId]);
+  const selectedCardBase = useMemo(() => cards.find((card) => card.id === selectedCardId) ?? null, [cards, selectedCardId]);
+  const selectedCard = useMemo(() => mergeCardWithDetail(selectedCardBase, selectedCardBase ? detailById[selectedCardBase.id] : null), [detailById, selectedCardBase]);
   const typeSummary = useMemo(() => buildTypeSummary(visibleCards), [visibleCards]);
   const spotlightCard = useMemo(() => selectedCard ?? visibleCards[0] ?? cards[0] ?? null, [cards, selectedCard, visibleCards]);
   const topTypeMessage = useMemo(() => resolveTopTypeMessage(typeSummary), [typeSummary]);
@@ -191,20 +249,62 @@ export function App() {
   }, [currentPage]);
 
   useEffect(() => {
-    const storedCards = parseStoredCards();
-    setCards(storedCards);
-    setSelectedCardId(storedCards[0]?.id ?? null);
-    setIsLoading(false);
-    setLoadError(null);
-    setLastAction(`Loaded ${storedCards.length} cards into the showcase.`);
-  }, []);
+    let isActive = true;
+
+    async function loadCatalog() {
+      const favoriteIds = readStoredFavoriteIds();
+      const dataMode = getDataMode();
+
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const remoteCards = dataMode === "local"
+          ? cloneDefaultCards()
+          : await fetchPokemonCatalog();
+        const nextCards = mergeFavoriteFlags(remoteCards, favoriteIds);
+
+        if (!isActive) {
+          return;
+        }
+
+        setCards(nextCards);
+        setSelectedCardId((previousValue) =>
+          nextCards.some((card) => card.id === previousValue) ? previousValue : nextCards[0]?.id ?? null
+        );
+        setIsLoading(false);
+        setLastAction(`Loaded ${nextCards.length} cards into the showcase.`);
+      } catch (error) {
+        const fallbackCards = mergeFavoriteFlags(cloneDefaultCards(), favoriteIds);
+
+        if (!isActive) {
+          return;
+        }
+
+        setCards(fallbackCards);
+        setSelectedCardId((previousValue) =>
+          fallbackCards.some((card) => card.id === previousValue) ? previousValue : fallbackCards[0]?.id ?? null
+        );
+        setIsLoading(false);
+        setLoadError(null);
+        setLastAction(`Remote catalog unavailable, loaded the local fallback gallery instead. ${error.message}`);
+      }
+    }
+
+    loadCatalog();
+
+    return () => {
+      isActive = false;
+    };
+  }, [catalogVersion]);
 
   useEffect(() => {
-    if (!canUseLocalStorage() || cards.length === 0) {
+    if (!canUseLocalStorage()) {
       return;
     }
 
-    localStorage.setItem("card-showcase-cards", JSON.stringify(cards));
+    const favoriteIds = cards.filter((card) => card.isFavorite).map((card) => card.id);
+    localStorage.setItem("card-showcase-favorites", JSON.stringify(favoriteIds));
   }, [cards]);
 
   useEffect(() => {
@@ -214,6 +314,75 @@ export function App() {
 
     localStorage.setItem("card-showcase-settings", JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!selectedCardBase) {
+      setIsDetailLoading(false);
+      setDetailError(null);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    if (detailById[selectedCardBase.id]) {
+      setIsDetailLoading(false);
+      setDetailError(null);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    if (getDataMode() === "local") {
+      setDetailById((previousValue) => ({
+        ...previousValue,
+        [selectedCardBase.id]: createLocalDetail(selectedCardBase),
+      }));
+      setIsDetailLoading(false);
+      setDetailError(null);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    async function loadDetail() {
+      setIsDetailLoading(true);
+      setDetailError(null);
+
+      try {
+        const nextDetail = await fetchPokemonDetail(selectedCardBase);
+
+        if (!isActive) {
+          return;
+        }
+
+        setDetailById((previousValue) => ({
+          ...previousValue,
+          [selectedCardBase.id]: nextDetail,
+        }));
+        setIsDetailLoading(false);
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        setIsDetailLoading(false);
+        setDetailError(`Unable to load full species details for ${selectedCardBase.name}.`);
+        setDetailById((previousValue) => ({
+          ...previousValue,
+          [selectedCardBase.id]: createLocalDetail(selectedCardBase),
+        }));
+        setLastAction(`Loaded ${selectedCardBase.name} with a fallback detail profile. ${error.message}`);
+      }
+    }
+
+    loadDetail();
+
+    return () => {
+      isActive = false;
+    };
+  }, [detailById, selectedCardBase]);
 
   function handleNavigate(page) {
     if (page === "detail" && !selectedCardId) {
@@ -337,27 +506,28 @@ export function App() {
   }
 
   function handleResetDemo() {
-    const nextCards = cloneDefaultCards();
+    const nextSettings = { ...DEFAULT_SETTINGS };
+    const nextCards = cards.map((card) => ({
+      ...card,
+      isFavorite: false,
+    }));
 
     setCards(nextCards);
-    setSelectedCardId(nextCards[0]?.id ?? null);
+    setCurrentPage(nextSettings.defaultPage);
     setSearchKeyword("");
     setTypeFilter("all");
     setFavoritesOnly(false);
-    setSortMode(settings.defaultSortMode);
+    setSortMode(nextSettings.defaultSortMode);
+    setSettings(nextSettings);
     setLoadError(null);
-    setIsLoading(false);
-    setLastAction("Card showcase reset to the default gallery.");
+    setDetailError(null);
+    setLastAction("Card showcase reset to the default gallery state.");
   }
 
   function handleRetryLoad() {
-    setIsLoading(true);
-    setLoadError(null);
-    const nextCards = cloneDefaultCards();
-    setCards(nextCards);
-    setSelectedCardId(nextCards[0]?.id ?? null);
-    setIsLoading(false);
-    setLastAction("Reloaded the card showcase dataset.");
+    setDetailById({});
+    setCatalogVersion((previousValue) => previousValue + 1);
+    setLastAction("Reloading the card showcase dataset.");
   }
 
   function handleSelectNext() {
@@ -405,6 +575,8 @@ export function App() {
       rotateY: 0,
       glareX: 50,
       glareY: 50,
+      glareRotation: 0,
+      surfaceShift: 0,
     });
   }
 
@@ -461,6 +633,8 @@ export function App() {
         card: selectedCard,
         relatedCards,
         settings,
+        isDetailLoading,
+        detailError,
         onNavigate: handleNavigate,
         onSelectCard: handleSelectAndOpen,
         onToggleFavorite: handleToggleFavorite,

@@ -123,6 +123,12 @@ export function DetailPage(props) {
             h("h2", null, "Card Metadata"),
             h("p", null, "The detail panel reacts instantly when the selected card changes.")
           ),
+          props.isDetailLoading
+            ? h("p", { id: "detail-loading-state", className: "detail-flavor" }, "Loading full species stats from the remote catalog.")
+            : null,
+          props.detailError
+            ? h("p", { id: "detail-error-state", className: "detail-flavor" }, props.detailError)
+            : null,
           h("div", { id: "detail-card-types", className: "card-type-row detail-type-row" }, ...renderTypeBadges(props.card.types)),
           h("ul", { className: "insight-list detail-stat-list" },
             h("li", { id: "detail-stat-number" }, `Number · ${props.card.number}`),

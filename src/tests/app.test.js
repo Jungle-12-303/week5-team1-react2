@@ -34,6 +34,7 @@ function changeValue(element, value) {
 }
 
 function createMountedApp() {
+  globalThis.__CARD_SHOWCASE_DATA_MODE__ = "local";
   const root = document.createElement("div");
   const app = createApp({ root, component: App, batching: "microtask" });
   app.mount();
