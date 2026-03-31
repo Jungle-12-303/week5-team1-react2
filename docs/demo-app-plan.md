@@ -286,9 +286,16 @@
   thumbUrl: "https://...",
   types: ["electric"],
   rarity: "rare",
-  hp: 60,
   height: 0.4,
   weight: 6.0,
+  baseStats: {
+    hp: 35,
+    attack: 55,
+    defense: 40,
+    specialAttack: 50,
+    specialDefense: 50,
+    speed: 90,
+  },
   flavor: "...",
   isFavorite: false,
 }

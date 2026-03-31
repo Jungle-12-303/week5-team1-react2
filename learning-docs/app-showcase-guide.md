@@ -17,6 +17,7 @@
 
 - [src/app/App.js](../src/app/App.js)
 - [src/app/main.js](../src/app/main.js)
+- [src/app/data/pokeApiClient.js](../src/app/data/pokeApiClient.js)
 - [src/app/data/cardLibrary.js](../src/app/data/cardLibrary.js)
 - [src/app/components](../src/app/components)
 - [src/app/pages](../src/app/pages)
@@ -122,7 +123,8 @@ flowchart TD
 하는 일:
 
 - 선택된 카드 크게 표시
-- 타입, 번호, HP, 높이, 무게, 설명 표시
+- 타입, 번호, 높이, 무게, 설명 표시
+- 종족값 6종과 Base Stat Total 표시
 - 즐겨찾기 토글
 - 관련 카드 이동
 - 다음 카드 이동
@@ -150,9 +152,10 @@ flowchart TD
 
 파일:
 
+- [src/app/data/pokeApiClient.js](../src/app/data/pokeApiClient.js)
 - [src/app/data/cardLibrary.js](../src/app/data/cardLibrary.js)
 
-현재 앱은 외부 이미지 URL을 사용하는 카드 메타데이터를 가진다.
+현재 앱은 원격 카탈로그를 기본 데이터 소스로 사용하고, 실패 시 fallback 카드 메타데이터로 내려간다.
 
 각 카드가 가지는 대표 정보:
 
@@ -163,13 +166,20 @@ flowchart TD
 - `thumbUrl`
 - `types`
 - `rarity`
-- `hp`
 - `height`
 - `weight`
+- `baseStats`
 - `flavor`
 - `isFavorite`
 
 즉, 카드 하나가 곧 앱이 렌더링하는 기본 데이터 단위다.
+
+추가로 현재 구현은 아래 정책을 따른다.
+
+- 원격 데이터: `PokeAPI`
+- 이미지: `official-artwork`와 기본 sprite
+- 정규 전국도감 범위: `#001 ~ #1025`
+- 원격 실패 시: `cardLibrary` fallback 사용
 
 ## 7. 왜 3D 틸트를 상태로 관리하지 않았는가
 
@@ -232,6 +242,7 @@ flowchart TD
 - 컬렉션 검색과 선택
 - 즐겨찾기 반영
 - 설정 반영
+- 원격 카탈로그 fallback 안내
 
 즉, “화면이 예쁘다”가 아니라 “상태 변화가 앱 전반에 올바르게 퍼진다”를 검증한다.
 
@@ -251,9 +262,10 @@ flowchart TD
 
 1. [src/app/main.js](../src/app/main.js)
 2. [src/app/App.js](../src/app/App.js)
-3. [src/app/data/cardLibrary.js](../src/app/data/cardLibrary.js)
-4. [src/app/pages/CollectionPage.js](../src/app/pages/CollectionPage.js)
-5. [src/app/components/CardTile.js](../src/app/components/CardTile.js)
-6. [src/tests/app.test.js](../src/tests/app.test.js)
+3. [src/app/data/pokeApiClient.js](../src/app/data/pokeApiClient.js)
+4. [src/app/data/cardLibrary.js](../src/app/data/cardLibrary.js)
+5. [src/app/pages/CollectionPage.js](../src/app/pages/CollectionPage.js)
+6. [src/app/components/CardTile.js](../src/app/components/CardTile.js)
+7. [src/tests/app.test.js](../src/tests/app.test.js)
 
 이 순서로 보면 “앱이 어떻게 시작되고, 어떤 상태를 가지며, 어떤 컴포넌트로 나뉘고, 무엇을 테스트하는지”까지 자연스럽게 연결된다.
