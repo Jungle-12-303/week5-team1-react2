@@ -122,6 +122,7 @@ component.update(nextProps?)
 
 `createApp`은 데모 앱에서 사용할 간단한 진입점이다.
 내부적으로 `FunctionComponent`와 기존 engine 계층을 연결한다.
+이 API는 브라우저에서 하나의 루트 앱을 mount 하고, 그 안에서 상태 기반 다중 페이지 화면 전환을 처리하는 것을 전제로 한다.
 
 ### 4.2 시그니처
 
@@ -181,6 +182,7 @@ createApp({
 - 앱은 내부 `src/core/...` 경로를 직접 import 하면 안 된다.
 - `root`가 유효한 `Element`가 아니면 명시적 오류를 발생시켜야 한다.
 - `unmount()` 이후 `mount()`를 다시 허용할지 여부는 구현에서 명시적으로 정해야 하며, 기본 권장 정책은 같은 인스턴스 재사용 금지다.
+- 앱은 하나의 `createApp()` 인스턴스만 mount 하고, 여러 화면은 루트 상태를 통해 전환해야 한다.
 
 ## 5. h
 
@@ -376,6 +378,8 @@ import { createApp } from "../index.js";
 - `document.getElementById("app")`가 `null`이면 명시적 오류를 발생시켜야 한다.
 - 문서가 이미 로드된 상태면 즉시 mount 한다.
 - 아니라면 `DOMContentLoaded` 이후 mount 한다.
+- 여러 화면은 라우터 없는 상태 기반 페이지 전환으로 구현할 수 있다.
+- 페이지 전환은 별도 root mount를 만들지 않고, 같은 루트 컴포넌트의 재렌더로 처리해야 한다.
 
 ## 16. 비범위 API
 
