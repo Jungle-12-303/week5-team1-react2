@@ -1,157 +1,104 @@
 /*
  * Responsibility:
- * - 집중 루틴 보드 앱의 루트 상태와 전체 화면 조합을 담당한다.
- * - v3 제약에 맞게 모든 상태와 Hook은 이 루트 컴포넌트 안에만 둔다.
+ * - 카드 컬렉션 쇼케이스 서비스의 루트 상태와 페이지 전환을 관리한다.
  */
 
 import { h, useEffect, useMemo, useState } from "../index.js";
-import { BoardHero } from "./components/BoardHero.js";
-import { RoutineComposer } from "./components/RoutineComposer.js";
-import { FilterBar } from "./components/FilterBar.js";
-import { BoardSection } from "./components/BoardSection.js";
-import { InsightPanel } from "./components/InsightPanel.js";
-
-const CATEGORY_LABELS = Object.freeze({
-  study: "공부",
-  coding: "코딩",
-  health: "건강",
-  life: "생활",
-});
-
-const PRIORITY_LABELS = Object.freeze({
-  high: "높음",
-  medium: "보통",
-  low: "낮음",
-});
-
-const STATUS_LABELS = Object.freeze({
-  all: "전체 상태",
-  active: "진행 중",
-  done: "완료",
-});
-
-const SORT_LABELS = Object.freeze({
-  created: "생성순",
-  priority: "중요도순",
-  title: "이름순",
-});
-
-const PRIORITY_SCORE = Object.freeze({
-  high: 3,
-  medium: 2,
-  low: 1,
-});
-
-const DEFAULT_ROUTINES = Object.freeze([
-  {
-    id: "routine-1",
-    title: "알고리즘 문제 2개 풀기",
-    category: "coding",
-    priority: "high",
-    done: false,
-    createdAt: 1710000000000,
-  },
-  {
-    id: "routine-2",
-    title: "CS 요약 노트 복습",
-    category: "study",
-    priority: "medium",
-    done: false,
-    createdAt: 1710001000000,
-  },
-  {
-    id: "routine-3",
-    title: "스트레칭 20분",
-    category: "health",
-    priority: "low",
-    done: true,
-    createdAt: 1710002000000,
-  },
-  {
-    id: "routine-4",
-    title: "포트폴리오 문장 다듬기",
-    category: "life",
-    priority: "high",
-    done: false,
-    createdAt: 1710003000000,
-  },
-]);
+import { CARD_LIBRARY, DEFAULT_SETTINGS, PAGE_META, TYPE_LABELS } from "./data/cardLibrary.js";
+import { AppShell } from "./components/AppShell.js";
+import { DashboardPage } from "./pages/DashboardPage.js";
+import { CollectionPage } from "./pages/CollectionPage.js";
+import { DetailPage } from "./pages/DetailPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 
 function canUseLocalStorage() {
   return typeof localStorage !== "undefined";
 }
 
-function createRoutineId() {
-  return `routine-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+function cloneDefaultCards() {
+  return CARD_LIBRARY.map((card) => ({ ...card, types: card.types.slice() }));
 }
 
-function parseStoredRoutines() {
+function readStoredJson(key) {
   if (!canUseLocalStorage()) {
-    return DEFAULT_ROUTINES.map((routine) => ({ ...routine }));
+    return null;
   }
 
   try {
-    const rawValue = localStorage.getItem("focus-routines");
-
-    if (!rawValue) {
-      return DEFAULT_ROUTINES.map((routine) => ({ ...routine }));
-    }
-
-    const parsed = JSON.parse(rawValue);
-
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return DEFAULT_ROUTINES.map((routine) => ({ ...routine }));
-    }
-
-    return parsed;
+    const rawValue = localStorage.getItem(key);
+    return rawValue ? JSON.parse(rawValue) : null;
   } catch {
-    return DEFAULT_ROUTINES.map((routine) => ({ ...routine }));
+    return null;
   }
 }
 
-function formatTodayLabel() {
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(new Date());
+function parseStoredSettings() {
+  const parsed = readStoredJson("card-showcase-settings");
+
+  if (!parsed || typeof parsed !== "object") {
+    return { ...DEFAULT_SETTINGS };
+  }
+
+  return {
+    defaultPage: parsed.defaultPage ?? DEFAULT_SETTINGS.defaultPage,
+    defaultSortMode: parsed.defaultSortMode ?? DEFAULT_SETTINGS.defaultSortMode,
+    tiltEnabled: parsed.tiltEnabled ?? DEFAULT_SETTINGS.tiltEnabled,
+    glareEnabled: parsed.glareEnabled ?? DEFAULT_SETTINGS.glareEnabled,
+    highResImage: parsed.highResImage ?? DEFAULT_SETTINGS.highResImage,
+  };
 }
 
-function sortRoutines(items, sortMode) {
-  const nextItems = items.slice();
+function parseStoredCards() {
+  const parsed = readStoredJson("card-showcase-cards");
 
-  nextItems.sort((left, right) => {
-    if (sortMode === "title") {
-      return left.title.localeCompare(right.title, "ko");
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return cloneDefaultCards();
+  }
+
+  return parsed.map((card) => ({
+    ...card,
+    types: Array.isArray(card.types) ? card.types.slice() : [],
+  }));
+}
+
+function createPageItems(pages) {
+  return Object.keys(pages).reduce((result, page) => {
+    result[page] = { label: pages[page].label };
+    return result;
+  }, {});
+}
+
+function sortCards(cards, sortMode) {
+  const nextCards = cards.slice();
+
+  nextCards.sort((left, right) => {
+    if (sortMode === "name") {
+      return left.name.localeCompare(right.name, "en");
     }
 
-    if (sortMode === "priority") {
-      const priorityDelta = PRIORITY_SCORE[right.priority] - PRIORITY_SCORE[left.priority];
+    if (sortMode === "favorites") {
+      const favoriteDelta = Number(right.isFavorite) - Number(left.isFavorite);
 
-      if (priorityDelta !== 0) {
-        return priorityDelta;
+      if (favoriteDelta !== 0) {
+        return favoriteDelta;
       }
     }
 
-    return right.createdAt - left.createdAt;
+    return Number(left.number) - Number(right.number);
   });
 
-  return nextItems;
+  return nextCards;
 }
 
-function filterRoutines(items, filters) {
+function filterCards(cards, filters) {
   const normalizedKeyword = filters.searchKeyword.trim().toLowerCase();
 
-  return items.filter((routine) => {
-    if (filters.statusFilter === "active" && routine.done) {
+  return cards.filter((card) => {
+    if (filters.typeFilter !== "all" && !card.types.includes(filters.typeFilter)) {
       return false;
     }
 
-    if (filters.statusFilter === "done" && !routine.done) {
-      return false;
-    }
-
-    if (filters.priorityFilter !== "all" && routine.priority !== filters.priorityFilter) {
+    if (filters.favoritesOnly && !card.isFavorite) {
       return false;
     }
 
@@ -159,203 +106,176 @@ function filterRoutines(items, filters) {
       return true;
     }
 
-    const categoryLabel = CATEGORY_LABELS[routine.category] ?? routine.category;
-    const haystack = `${routine.title} ${categoryLabel}`.toLowerCase();
-    return haystack.includes(normalizedKeyword);
+    return `${card.name} ${card.number}`.toLowerCase().includes(normalizedKeyword);
   });
 }
 
-function groupRoutines(items) {
-  return {
-    focusNow: items.filter((routine) => !routine.done && routine.priority === "high"),
-    inProgress: items.filter((routine) => !routine.done && routine.priority !== "high"),
-    done: items.filter((routine) => routine.done),
-  };
+function buildTypeSummary(cards) {
+  return Object.entries(TYPE_LABELS)
+    .map(([type, label]) => ({
+      type,
+      label,
+      count: cards.filter((card) => card.types.includes(type)).length,
+    }))
+    .filter((item) => item.count > 0)
+    .sort((left, right) => right.count - left.count);
 }
 
-function getFilterSummary(statusFilter, priorityFilter, searchKeyword, sortMode) {
-  const summary = [];
-
-  if (statusFilter !== "all") {
-    summary.push(`상태: ${STATUS_LABELS[statusFilter] ?? statusFilter}`);
+function resolveTopTypeMessage(typeSummary) {
+  if (typeSummary.length === 0) {
+    return "Type insight will appear as soon as cards are available.";
   }
 
-  if (priorityFilter !== "all") {
-    summary.push(`중요도: ${PRIORITY_LABELS[priorityFilter] ?? priorityFilter}`);
+  const leader = typeSummary[0];
+  return `${leader.label} leads the collection with ${leader.count} visible cards.`;
+}
+
+function getCardIndex(cards, selectedCardId) {
+  return cards.findIndex((card) => card.id === selectedCardId);
+}
+
+function applyInteractiveStyle(element, options) {
+  if (!element) {
+    return;
   }
 
-  if (searchKeyword.trim()) {
-    summary.push(`검색: ${searchKeyword.trim()}`);
-  }
+  const tilt = options.tiltEnabled
+    ? `transform: perspective(960px) rotateX(${options.rotateX}deg) rotateY(${options.rotateY}deg) scale3d(1.02, 1.02, 1.02);`
+    : "transform: perspective(960px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);";
+  const glare = options.glareEnabled
+    ? `--glare-x: ${options.glareX}%; --glare-y: ${options.glareY}%; --glare-opacity: 0.92;`
+    : "--glare-x: 50%; --glare-y: 50%; --glare-opacity: 0;";
 
-  summary.push(`정렬: ${SORT_LABELS[sortMode] ?? sortMode}`);
-  return summary;
+  element.setAttribute("style", `${tilt} ${glare}`);
 }
 
 export function App() {
-  const [routines, setRoutines] = useState(() => parseStoredRoutines());
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftCategory, setDraftCategory] = useState("coding");
-  const [draftPriority, setDraftPriority] = useState("medium");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [settings, setSettings] = useState(() => parseStoredSettings());
+  const [currentPage, setCurrentPage] = useState(() => parseStoredSettings().defaultPage ?? "dashboard");
+  const [cards, setCards] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [selectedCardId, setSelectedCardId] = useState(null);
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [sortMode, setSortMode] = useState("created");
-  const [lastAction, setLastAction] = useState("오늘의 집중 루틴을 준비했습니다.");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [sortMode, setSortMode] = useState(() => parseStoredSettings().defaultSortMode ?? "number");
+  const [lastAction, setLastAction] = useState("Loading the card showcase library.");
 
-  const totalCount = routines.length;
-
-  const doneCount = useMemo(() => {
-    return routines.filter((routine) => routine.done).length;
-  }, [routines]);
-
-  const activeCount = useMemo(() => {
-    return totalCount - doneCount;
-  }, [totalCount, doneCount]);
-
-  const progressPercent = useMemo(() => {
-    if (totalCount === 0) {
-      return 0;
+  const pageItems = useMemo(() => createPageItems(PAGE_META), []);
+  const visibleCards = useMemo(() => sortCards(filterCards(cards, {
+    searchKeyword,
+    typeFilter,
+    favoritesOnly,
+  }), sortMode), [cards, favoritesOnly, searchKeyword, sortMode, typeFilter]);
+  const favoriteCount = useMemo(() => cards.filter((card) => card.isFavorite).length, [cards]);
+  const selectedCard = useMemo(() => cards.find((card) => card.id === selectedCardId) ?? null, [cards, selectedCardId]);
+  const typeSummary = useMemo(() => buildTypeSummary(visibleCards), [visibleCards]);
+  const spotlightCard = useMemo(() => selectedCard ?? visibleCards[0] ?? cards[0] ?? null, [cards, selectedCard, visibleCards]);
+  const topTypeMessage = useMemo(() => resolveTopTypeMessage(typeSummary), [typeSummary]);
+  const relatedCards = useMemo(() => {
+    if (!selectedCard) {
+      return visibleCards.slice(0, 3);
     }
 
-    return Math.round((doneCount / totalCount) * 100);
-  }, [doneCount, totalCount]);
-
-  const visibleRoutines = useMemo(() => {
-    return sortRoutines(
-      filterRoutines(routines, {
-        statusFilter,
-        priorityFilter,
-        searchKeyword,
-      }),
-      sortMode
-    );
-  }, [priorityFilter, routines, searchKeyword, sortMode, statusFilter]);
-
-  const groupedBoard = useMemo(() => {
-    return groupRoutines(visibleRoutines);
-  }, [visibleRoutines]);
-
-  const visibleCount = useMemo(() => visibleRoutines.length, [visibleRoutines]);
-
-  const focusNowCount = useMemo(() => groupedBoard.focusNow.length, [groupedBoard]);
-
-  const activeFilterSummary = useMemo(() => {
-    return getFilterSummary(statusFilter, priorityFilter, searchKeyword, sortMode);
-  }, [priorityFilter, searchKeyword, sortMode, statusFilter]);
-
-  const categorySummary = useMemo(() => {
-    const summary = Object.keys(CATEGORY_LABELS).map((category) => {
-      const count = visibleRoutines.filter((routine) => routine.category === category).length;
-      return {
-        category,
-        label: CATEGORY_LABELS[category],
-        count,
-      };
-    });
-
-    return summary.filter((item) => item.count > 0);
-  }, [visibleRoutines]);
-
-  const topCategory = useMemo(() => {
-    if (categorySummary.length === 0) {
-      return "지금은 화면에 보이는 루틴이 없습니다.";
-    }
-
-    const [leader] = categorySummary.slice().sort((left, right) => right.count - left.count);
-    return `${leader.label} 루틴이 ${leader.count}개로 가장 많습니다.`;
-  }, [categorySummary]);
-
-  const todayLabel = useMemo(() => formatTodayLabel(), []);
+    return visibleCards.filter((card) => card.id !== selectedCard.id).slice(0, 3);
+  }, [selectedCard, visibleCards]);
 
   useEffect(() => {
-    document.title = `집중 루틴 ${doneCount}/${totalCount}`;
+    document.title = `${PAGE_META[currentPage]?.title ?? "Showcase"} · Prism Dex`;
 
     return () => {
       document.title = "Week5 React-like Runtime";
     };
-  }, [doneCount, totalCount]);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const storedCards = parseStoredCards();
+    setCards(storedCards);
+    setSelectedCardId(storedCards[0]?.id ?? null);
+    setIsLoading(false);
+    setLoadError(null);
+    setLastAction(`Loaded ${storedCards.length} cards into the showcase.`);
+  }, []);
+
+  useEffect(() => {
+    if (!canUseLocalStorage() || cards.length === 0) {
+      return;
+    }
+
+    localStorage.setItem("card-showcase-cards", JSON.stringify(cards));
+  }, [cards]);
 
   useEffect(() => {
     if (!canUseLocalStorage()) {
       return;
     }
 
-    localStorage.setItem("focus-routines", JSON.stringify(routines));
-  }, [routines]);
+    localStorage.setItem("card-showcase-settings", JSON.stringify(settings));
+  }, [settings]);
 
-  function handleTitleInput(event) {
-    setDraftTitle(event.target.value);
-  }
+  function handleNavigate(page) {
+    if (page === "detail" && !selectedCardId) {
+      setCurrentPage("collection");
+      return;
+    }
 
-  function handleCategoryChange(event) {
-    setDraftCategory(event.target.value);
-  }
-
-  function handlePriorityChange(event) {
-    setDraftPriority(event.target.value);
-  }
-
-  function handleStatusFilterChange(event) {
-    setStatusFilter(event.target.value);
-    setLastAction("상태 필터를 변경했습니다.");
-  }
-
-  function handlePriorityFilterChange(event) {
-    setPriorityFilter(event.target.value);
-    setLastAction("중요도 필터를 변경했습니다.");
+    setCurrentPage(page);
   }
 
   function handleSearchInput(event) {
     setSearchKeyword(event.target.value);
+    setLastAction(`Searching collection for "${event.target.value || "all cards"}".`);
+  }
+
+  function handleTypeFilterChange(event) {
+    setTypeFilter(event.target.value);
+    setLastAction(`Type filter changed to ${event.target.value}.`);
+  }
+
+  function handleFavoritesToggle(event) {
+    setFavoritesOnly(Boolean(event.target.checked));
+    setLastAction(Boolean(event.target.checked) ? "Collection is now filtered to saved cards." : "Collection now shows all cards again.");
   }
 
   function handleSortChange(event) {
     setSortMode(event.target.value);
-    setLastAction("정렬 기준을 변경했습니다.");
+    setLastAction(`Collection sort changed to ${event.target.value}.`);
   }
 
-  function handleSubmitRoutine(event) {
-    event.preventDefault();
+  function handleSelectCard(cardId) {
+    const target = cards.find((card) => card.id === cardId);
 
-    const nextTitle = draftTitle.trim();
-
-    if (!nextTitle) {
-      setLastAction("빈 루틴은 추가할 수 없습니다.");
+    if (!target) {
       return;
     }
 
-    const nextRoutine = {
-      id: createRoutineId(),
-      title: nextTitle,
-      category: draftCategory,
-      priority: draftPriority,
-      done: false,
-      createdAt: Date.now(),
-    };
-
-    setRoutines((previousRoutines) => [nextRoutine, ...previousRoutines]);
-    setDraftTitle("");
-    setLastAction(`"${nextRoutine.title}" 루틴을 추가했습니다.`);
+    setSelectedCardId(cardId);
+    setLastAction(`Selected ${target.name} for the detail spotlight.`);
   }
 
-  function handleToggleRoutine(routineId) {
-    let nextAction = "루틴 상태를 변경했습니다.";
+  function handleSelectAndOpen(cardId) {
+    handleSelectCard(cardId);
+    setCurrentPage("detail");
+  }
 
-    setRoutines((previousRoutines) =>
-      previousRoutines.map((routine) => {
-        if (routine.id !== routineId) {
-          return routine;
+  function handleToggleFavorite(cardId) {
+    let nextAction = "Updated a saved card state.";
+
+    setCards((previousCards) =>
+      previousCards.map((card) => {
+        if (card.id !== cardId) {
+          return card;
         }
 
-        const nextDone = !routine.done;
-        nextAction = nextDone
-          ? `"${routine.title}" 루틴을 완료했습니다.`
-          : `"${routine.title}" 루틴을 다시 진행 중으로 돌렸습니다.`;
+        const nextFavorite = !card.isFavorite;
+        nextAction = nextFavorite
+          ? `Saved ${card.name} to favorites.`
+          : `Removed ${card.name} from favorites.`;
 
         return {
-          ...routine,
-          done: nextDone,
+          ...card,
+          isFavorite: nextFavorite,
         };
       })
     );
@@ -363,99 +283,225 @@ export function App() {
     setLastAction(nextAction);
   }
 
-  function handleRemoveRoutine(routineId) {
-    let nextAction = "루틴을 삭제했습니다.";
+  function handleDefaultPageChange(event) {
+    const nextPage = event.target.value;
 
-    setRoutines((previousRoutines) =>
-      previousRoutines.filter((routine) => {
-        if (routine.id === routineId) {
-          nextAction = `"${routine.title}" 루틴을 삭제했습니다.`;
-          return false;
-        }
-
-        return true;
-      })
-    );
-
-    setLastAction(nextAction);
+    setSettings((previousValue) => ({
+      ...previousValue,
+      defaultPage: nextPage,
+    }));
+    setCurrentPage(nextPage);
+    setLastAction(`Default page changed to ${nextPage}.`);
   }
 
-  return h("main", { className: "app-shell" },
-    h(BoardHero, {
-      todayLabel,
-      totalCount,
-      doneCount,
-      activeCount,
-      progressPercent,
-    }),
-    h(RoutineComposer, {
-      draftTitle,
-      draftCategory,
-      draftPriority,
-      categoryLabels: CATEGORY_LABELS,
-      priorityLabels: PRIORITY_LABELS,
-      onTitleInput: handleTitleInput,
-      onCategoryChange: handleCategoryChange,
-      onPriorityChange: handlePriorityChange,
-      onSubmit: handleSubmitRoutine,
-    }),
-    h(FilterBar, {
-      statusFilter,
-      priorityFilter,
-      searchKeyword,
-      sortMode,
-      visibleCount,
-      totalCount,
-      activeFilterSummary,
-      priorityLabels: PRIORITY_LABELS,
-      onStatusFilterChange: handleStatusFilterChange,
-      onPriorityFilterChange: handlePriorityFilterChange,
-      onSearchInput: handleSearchInput,
-      onSortChange: handleSortChange,
-    }),
-    h("section", { className: "board-layout" },
-      h(BoardSection, {
-        title: "Focus Now",
-        description: "가장 먼저 처리해야 할 높은 중요도의 루틴입니다.",
-        count: groupedBoard.focusNow.length,
-        items: groupedBoard.focusNow,
-        emptyMessage: "지금 당장 집중해야 할 루틴이 없습니다.",
-        categoryLabels: CATEGORY_LABELS,
-        priorityLabels: PRIORITY_LABELS,
-        onToggle: handleToggleRoutine,
-        onRemove: handleRemoveRoutine,
-      }),
-      h(BoardSection, {
-        title: "In Progress",
-        description: "현재 진행 중인 루틴입니다.",
-        count: groupedBoard.inProgress.length,
-        items: groupedBoard.inProgress,
-        emptyMessage: "진행 중인 루틴이 없습니다.",
-        categoryLabels: CATEGORY_LABELS,
-        priorityLabels: PRIORITY_LABELS,
-        onToggle: handleToggleRoutine,
-        onRemove: handleRemoveRoutine,
-      }),
-      h(BoardSection, {
-        title: "Done",
-        description: "오늘 완료한 루틴입니다.",
-        count: groupedBoard.done.length,
-        items: groupedBoard.done,
-        emptyMessage: "완료한 루틴이 아직 없습니다.",
-        categoryLabels: CATEGORY_LABELS,
-        priorityLabels: PRIORITY_LABELS,
-        onToggle: handleToggleRoutine,
-        onRemove: handleRemoveRoutine,
-      })
-    ),
-    h(InsightPanel, {
+  function handleDefaultSortChange(event) {
+    const nextSortMode = event.target.value;
+
+    setSettings((previousValue) => ({
+      ...previousValue,
+      defaultSortMode: nextSortMode,
+    }));
+    setSortMode(nextSortMode);
+    setLastAction(`Default sort changed to ${nextSortMode}.`);
+  }
+
+  function handleTiltToggle(event) {
+    const nextValue = Boolean(event.target.checked);
+
+    setSettings((previousValue) => ({
+      ...previousValue,
+      tiltEnabled: nextValue,
+    }));
+    setLastAction(nextValue ? "Card tilt effect enabled." : "Card tilt effect disabled.");
+  }
+
+  function handleGlareToggle(event) {
+    const nextValue = Boolean(event.target.checked);
+
+    setSettings((previousValue) => ({
+      ...previousValue,
+      glareEnabled: nextValue,
+    }));
+    setLastAction(nextValue ? "Card glare effect enabled." : "Card glare effect disabled.");
+  }
+
+  function handleHighResToggle(event) {
+    const nextValue = Boolean(event.target.checked);
+
+    setSettings((previousValue) => ({
+      ...previousValue,
+      highResImage: nextValue,
+    }));
+    setLastAction(nextValue ? "High-resolution art enabled." : "Thumbnail art mode enabled.");
+  }
+
+  function handleResetDemo() {
+    const nextCards = cloneDefaultCards();
+
+    setCards(nextCards);
+    setSelectedCardId(nextCards[0]?.id ?? null);
+    setSearchKeyword("");
+    setTypeFilter("all");
+    setFavoritesOnly(false);
+    setSortMode(settings.defaultSortMode);
+    setLoadError(null);
+    setIsLoading(false);
+    setLastAction("Card showcase reset to the default gallery.");
+  }
+
+  function handleRetryLoad() {
+    setIsLoading(true);
+    setLoadError(null);
+    const nextCards = cloneDefaultCards();
+    setCards(nextCards);
+    setSelectedCardId(nextCards[0]?.id ?? null);
+    setIsLoading(false);
+    setLastAction("Reloaded the card showcase dataset.");
+  }
+
+  function handleSelectNext() {
+    if (visibleCards.length === 0) {
+      return;
+    }
+
+    const currentIndex = getCardIndex(visibleCards, selectedCardId);
+    const nextIndex = currentIndex === -1 || currentIndex === visibleCards.length - 1 ? 0 : currentIndex + 1;
+    handleSelectCard(visibleCards[nextIndex].id);
+  }
+
+  function handlePointerMove(event) {
+    const element = event.currentTarget;
+
+    if (!element || typeof element.getBoundingClientRect !== "function") {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+    const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
+    const rotateY = (relativeX - 0.5) * 18;
+    const rotateX = (0.5 - relativeY) * 16;
+
+    applyInteractiveStyle(element, {
+      tiltEnabled: settings.tiltEnabled,
+      glareEnabled: settings.glareEnabled,
+      rotateX,
+      rotateY,
+      glareX: Math.round(relativeX * 100),
+      glareY: Math.round(relativeY * 100),
+    });
+  }
+
+  function handlePointerLeave(event) {
+    const element = event.currentTarget;
+
+    applyInteractiveStyle(element, {
+      tiltEnabled: false,
+      glareEnabled: false,
+      rotateX: 0,
+      rotateY: 0,
+      glareX: 50,
+      glareY: 50,
+    });
+  }
+
+  function renderCurrentPage() {
+    if (isLoading) {
+      return h("section", { className: "page-stack", id: "page-loading" },
+        h("article", { className: "panel-card empty-detail-card" },
+          h("h1", null, "Loading card showcase"),
+          h("p", { id: "loading-state" }, "Preparing the gallery from external image-ready card records.")
+        )
+      );
+    }
+
+    if (loadError) {
+      return h("section", { className: "page-stack", id: "page-error" },
+        h("article", { className: "panel-card empty-detail-card" },
+          h("h1", null, "Unable to load cards"),
+          h("p", { id: "error-state" }, loadError),
+          h("button", {
+            id: "retry-load-button",
+            className: "primary-button",
+            onClick: handleRetryLoad,
+          }, "Retry")
+        )
+      );
+    }
+
+    if (currentPage === "collection") {
+      return h(CollectionPage, {
+        onNavigate: handleNavigate,
+        cards: visibleCards,
+        totalCount: cards.length,
+        searchKeyword,
+        typeFilter,
+        favoritesOnly,
+        sortMode,
+        typeLabels: TYPE_LABELS,
+        settings,
+        selectedCardId,
+        emptyMessage: "No cards match the current collection filters.",
+        onSearchInput: handleSearchInput,
+        onTypeFilterChange: handleTypeFilterChange,
+        onFavoritesToggle: handleFavoritesToggle,
+        onSortChange: handleSortChange,
+        onSelectCard: handleSelectAndOpen,
+        onToggleFavorite: handleToggleFavorite,
+        onPointerMove: handlePointerMove,
+        onPointerLeave: handlePointerLeave,
+      });
+    }
+
+    if (currentPage === "detail") {
+      return h(DetailPage, {
+        card: selectedCard,
+        relatedCards,
+        settings,
+        onNavigate: handleNavigate,
+        onSelectCard: handleSelectAndOpen,
+        onToggleFavorite: handleToggleFavorite,
+        onSelectNext: handleSelectNext,
+        onPointerMove: handlePointerMove,
+        onPointerLeave: handlePointerLeave,
+      });
+    }
+
+    if (currentPage === "settings") {
+      return h(SettingsPage, {
+        pages: pageItems,
+        settings,
+        onDefaultPageChange: handleDefaultPageChange,
+        onDefaultSortChange: handleDefaultSortChange,
+        onTiltToggle: handleTiltToggle,
+        onGlareToggle: handleGlareToggle,
+        onHighResToggle: handleHighResToggle,
+        onResetDemo: handleResetDemo,
+      });
+    }
+
+    return h(DashboardPage, {
+      totalCount: cards.length,
+      favoriteCount,
+      visibleCount: visibleCards.length,
+      selectedCard,
+      spotlightCard,
       lastAction,
-      visibleCount,
-      totalCount,
-      doneCount,
-      focusNowCount,
-      topCategory,
-      categorySummary,
-    })
-  );
+      topTypeMessage,
+      typeSummary,
+      settings,
+      onNavigate: handleNavigate,
+      onSelectCard: handleSelectAndOpen,
+      onToggleFavorite: handleToggleFavorite,
+      onPointerMove: handlePointerMove,
+      onPointerLeave: handlePointerLeave,
+    });
+  }
+
+  return h(AppShell, {
+    currentPage,
+    pages: pageItems,
+    onNavigate: handleNavigate,
+    lastAction,
+  }, renderCurrentPage());
 }

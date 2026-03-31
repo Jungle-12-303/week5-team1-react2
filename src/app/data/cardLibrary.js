@@ -1,0 +1,115 @@
+/*
+ * Responsibility:
+ * - 카드 컬렉션 쇼케이스 앱에서 사용할 기본 카드 메타데이터와 라벨 정보를 제공한다.
+ */
+
+export const TYPE_LABELS = Object.freeze({
+  electric: "Electric",
+  fire: "Fire",
+  ghost: "Ghost",
+  water: "Water",
+  fighting: "Fighting",
+  psychic: "Psychic",
+});
+
+export const PAGE_META = Object.freeze({
+  dashboard: { label: "Dashboard", title: "Dashboard" },
+  collection: { label: "Collection", title: "Collection" },
+  detail: { label: "Detail", title: "Card Detail" },
+  settings: { label: "Settings", title: "Settings" },
+});
+
+export const DEFAULT_SETTINGS = Object.freeze({
+  defaultPage: "dashboard",
+  defaultSortMode: "number",
+  tiltEnabled: true,
+  glareEnabled: true,
+  highResImage: true,
+});
+
+export const CARD_LIBRARY = Object.freeze([
+  {
+    id: "card-025",
+    name: "Pikachu",
+    number: "025",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png",
+    types: ["electric"],
+    rarity: "Rare",
+    hp: 60,
+    height: 0.4,
+    weight: 6.0,
+    flavor: "A bright electric mascot card with fast sparks and a compact profile.",
+    isFavorite: false,
+  },
+  {
+    id: "card-006",
+    name: "Charizard",
+    number: "006",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/6.png",
+    types: ["fire"],
+    rarity: "Ultra Rare",
+    hp: 150,
+    height: 1.7,
+    weight: 90.5,
+    flavor: "A dramatic fire card with high attack fantasy and a premium showcase feel.",
+    isFavorite: false,
+  },
+  {
+    id: "card-094",
+    name: "Gengar",
+    number: "094",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/94.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/94.png",
+    types: ["ghost"],
+    rarity: "Rare",
+    hp: 130,
+    height: 1.5,
+    weight: 40.5,
+    flavor: "A shadow-heavy ghost card that works well with holographic hover effects.",
+    isFavorite: false,
+  },
+  {
+    id: "card-131",
+    name: "Lapras",
+    number: "131",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/131.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/131.png",
+    types: ["water"],
+    rarity: "Illustration Rare",
+    hp: 110,
+    height: 2.5,
+    weight: 220.0,
+    flavor: "A calm water card that gives the collection a softer, premium balance.",
+    isFavorite: false,
+  },
+  {
+    id: "card-448",
+    name: "Lucario",
+    number: "448",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/448.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/448.png",
+    types: ["fighting"],
+    rarity: "Rare",
+    hp: 120,
+    height: 1.2,
+    weight: 54.0,
+    flavor: "A sharp fighting card with a clean silhouette for a responsive detail page.",
+    isFavorite: false,
+  },
+  {
+    id: "card-282",
+    name: "Gardevoir",
+    number: "282",
+    imageUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/282.png",
+    thumbUrl: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/282.png",
+    types: ["psychic"],
+    rarity: "Special Rare",
+    hp: 140,
+    height: 1.6,
+    weight: 48.4,
+    flavor: "An elegant psychic card that suits the glassmorphism and spotlight view.",
+    isFavorite: false,
+  },
+]);

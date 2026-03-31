@@ -1,6 +1,6 @@
 /*
  * Responsibility:
- * - 집중 루틴 보드 앱의 핵심 사용자 흐름을 검증한다.
+ * - 카드 컬렉션 쇼케이스 앱의 핵심 사용자 흐름을 검증한다.
  */
 
 import { createApp } from "../index.js";
@@ -19,124 +19,118 @@ async function runCase(name, fn) {
   }
 }
 
-function getButtonsByText(root, label) {
-  return root
-    .querySelectorAll("button")
-    .filter((button) => button.textContent === label);
+function click(element) {
+  element.dispatchEvent(new Event("click", { bubbles: true }));
+}
+
+function inputValue(element, value) {
+  element.value = value;
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function changeValue(element, value) {
+  element.value = value;
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function createMountedApp() {
+  const root = document.createElement("div");
+  const app = createApp({ root, component: App, batching: "microtask" });
+  app.mount();
+  return { root, app };
 }
 
 export async function runAppTests() {
   return Promise.all([
-    runCase("focus routine board renders core sections", async () => {
-      const root = document.createElement("div");
-      createApp({ root, component: App, batching: "microtask" }).mount();
+    runCase("card showcase renders dashboard after the initial load", async () => {
+      const { root } = createMountedApp();
       await flushMicrotasks();
 
-      if (!root.textContent.includes("집중 루틴 보드")) {
-        throw new Error("Expected app title to render.");
+      if (!root.querySelector("#page-dashboard")) {
+        throw new Error("Expected the dashboard page to render after the initial load.");
       }
 
-      if (!root.textContent.includes("Focus Now") || !root.textContent.includes("In Progress") || !root.textContent.includes("Done")) {
-        throw new Error("Expected grouped board sections to render.");
+      if (!root.querySelector("#summary-total-cards").textContent.includes("6")) {
+        throw new Error("Expected dashboard KPI to show the seeded card count.");
       }
     }),
-    runCase("focus routine board supports add, search and toggle flows", async () => {
-      const root = document.createElement("div");
-      createApp({ root, component: App, batching: "microtask" }).mount();
+    runCase("card showcase filters and selects cards from the collection page", async () => {
+      const { root } = createMountedApp();
       await flushMicrotasks();
 
-      const titleInput = root.querySelector("#routine-title-input");
-      const searchInput = root.querySelector("#routine-search-input");
-      const composerForm = root.querySelector("#routine-composer-form");
+      click(root.querySelector("#nav-collection"));
+      await flushMicrotasks();
 
-      if (!titleInput || !searchInput || !composerForm) {
-        throw new Error("Expected the focus board form controls to expose stable selectors.");
+      inputValue(root.querySelector("#collection-search-input"), "char");
+      await flushMicrotasks();
+
+      if (!root.textContent.includes("Charizard")) {
+        throw new Error("Expected collection search to show the matching card.");
       }
 
-      titleInput.value = "발표 연습 15분";
-      titleInput.dispatchEvent(new Event("input", { bubbles: true }));
-      await flushMicrotasks();
-      composerForm.dispatchEvent(new Event("submit", { bubbles: true }));
-      await flushMicrotasks();
-
-      if (!root.textContent.includes("발표 연습 15분")) {
-        throw new Error("Expected a newly added routine to appear.");
+      if (root.textContent.includes("Pikachu")) {
+        throw new Error("Expected collection search to narrow the visible grid.");
       }
 
-      searchInput.value = "발표";
-      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      click(root.querySelector("#card-open-card-006"));
       await flushMicrotasks();
 
-      if (root.querySelectorAll("article").length !== 1) {
-        throw new Error("Expected search filter to narrow the visible routine list.");
+      if (!root.querySelector("#page-detail")) {
+        throw new Error("Expected selecting a card to open the detail page.");
       }
 
-      const completeButtons = getButtonsByText(root, "완료");
-
-      if (completeButtons.length === 0) {
-        throw new Error("Expected at least one visible complete button after filtering.");
-      }
-
-      completeButtons[0].dispatchEvent(new Event("click", { bubbles: true }));
-      await flushMicrotasks();
-
-      if (!root.textContent.includes("완료했습니다")) {
-        throw new Error("Expected insight panel action text to stay in sync after toggle.");
+      if (!root.querySelector("#detail-card-name").textContent.includes("Charizard")) {
+        throw new Error("Expected detail page to render the selected card.");
       }
     }),
-    runCase("focus routine board supports filter, sort and remove flows", async () => {
-      const root = document.createElement("div");
-      createApp({ root, component: App, batching: "microtask" }).mount();
+    runCase("card showcase favorites update dashboard metrics immediately", async () => {
+      const { root } = createMountedApp();
       await flushMicrotasks();
 
-      const statusFilter = root.querySelector("#routine-status-filter");
-      const priorityFilter = root.querySelector("#routine-priority-filter");
-      const sortSelect = root.querySelector("#routine-sort-select");
-      if (!statusFilter || !priorityFilter || !sortSelect) {
-        throw new Error("Expected filter controls and default remove action to expose stable selectors.");
-      }
-
-      priorityFilter.value = "high";
-      priorityFilter.dispatchEvent(new Event("change", { bubbles: true }));
+      click(root.querySelector("#nav-collection"));
       await flushMicrotasks();
 
-      if (root.querySelectorAll("article").length !== 2) {
-        throw new Error("Expected priority filter to narrow the visible routines to the two high-priority cards.");
-      }
-
-      statusFilter.value = "active";
-      statusFilter.dispatchEvent(new Event("change", { bubbles: true }));
+      click(root.querySelector("#card-favorite-card-025"));
       await flushMicrotasks();
 
-      sortSelect.value = "title";
-      sortSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      if (!root.querySelector("#global-status-message").textContent.includes("Pikachu")) {
+        throw new Error("Expected saving a card to update the shared status banner.");
+      }
+
+      click(root.querySelector("#nav-dashboard"));
       await flushMicrotasks();
 
-      const orderedArticles = root.querySelectorAll("article");
-
-      if (!orderedArticles[0] || !orderedArticles[0].textContent.includes("알고리즘 문제 2개 풀기")) {
-        throw new Error("Expected title sort to place the algorithm routine first in the visible list.");
+      if (!root.querySelector("#summary-favorite-cards").textContent.includes("1")) {
+        throw new Error("Expected dashboard favorite KPI to reflect the saved card count.");
       }
-
-      const removeButton = root.querySelector("#routine-remove-routine-1");
-
-      if (!removeButton) {
-        throw new Error("Expected the filtered routine card to expose a stable remove selector.");
-      }
-
-      removeButton.dispatchEvent(new Event("click", { bubbles: true }));
+    }),
+    runCase("card showcase settings apply immediately across pages", async () => {
+      const { root } = createMountedApp();
       await flushMicrotasks();
 
-      if (root.querySelector("#routine-card-routine-1")) {
-        throw new Error("Expected delete flow to remove the target routine from the board.");
+      click(root.querySelector("#nav-settings"));
+      await flushMicrotasks();
+
+      changeValue(root.querySelector("#settings-default-sort"), "name");
+      await flushMicrotasks();
+
+      const tiltToggle = root.querySelector("#settings-tilt-toggle");
+      tiltToggle.checked = false;
+      tiltToggle.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushMicrotasks();
+
+      click(root.querySelector("#nav-collection"));
+      await flushMicrotasks();
+
+      if (root.querySelector("#collection-sort-select").value !== "name") {
+        throw new Error("Expected collection page to reflect the updated default sort.");
       }
 
-      if (root.querySelectorAll("article").length !== 1) {
-        throw new Error("Expected delete flow to reduce the visible routine count.");
-      }
+      click(root.querySelector("#card-open-card-448"));
+      await flushMicrotasks();
 
-      if (!root.textContent.includes("삭제했습니다")) {
-        throw new Error("Expected the insight panel to reflect the delete action.");
+      if (root.querySelector("#detail-showcase").getAttribute("data-tilt-enabled") !== "false") {
+        throw new Error("Expected detail showcase to reflect the disabled tilt setting.");
       }
     }),
   ]);
