@@ -259,6 +259,77 @@ export async function runRuntimeTests() {
         throw new Error("Expected hook count drift to throw an explicit error.");
       }
     }),
+    runCase("createApp validates root and component inputs", () => {
+      let rootError = "";
+      let componentError = "";
+
+      try {
+        createApp({ root: null, component: () => h("div", null, "x") });
+      } catch (error) {
+        rootError = error.message;
+      }
+
+      try {
+        createApp({ root: document.createElement("div"), component: null });
+      } catch (error) {
+        componentError = error.message;
+      }
+
+      if (!rootError.includes("valid root Element")) {
+        throw new Error("Expected invalid root to throw an explicit error.");
+      }
+
+      if (!componentError.includes("root component function")) {
+        throw new Error("Expected invalid component to throw an explicit error.");
+      }
+    }),
+    runCase("createApp inspect exposes runtime and engine snapshots", () => {
+      const root = document.createElement("div");
+
+      function App() {
+        const [count] = useState(1);
+        return h("div", null, String(count));
+      }
+
+      const app = createApp({ root, component: App });
+      app.mount();
+      const snapshot = app.inspect();
+
+      if (!Array.isArray(snapshot.hooks)) {
+        throw new Error("Expected inspect to expose hook slots.");
+      }
+
+      if (snapshot.renderCount !== 1) {
+        throw new Error("Expected inspect to expose render count.");
+      }
+
+      if (!snapshot.engine || snapshot.engine.currentVNode !== snapshot.currentVNode) {
+        throw new Error("Expected inspect to expose engine snapshot.");
+      }
+    }),
+    runCase("a component instance cannot be mounted again after unmount", () => {
+      const root = document.createElement("div");
+
+      function App() {
+        return h("div", null, "once");
+      }
+
+      const app = createApp({ root, component: App });
+      app.mount();
+      app.unmount();
+
+      let errorMessage = "";
+
+      try {
+        app.mount();
+      } catch (error) {
+        errorMessage = error.message;
+      }
+
+      if (!errorMessage.includes("cannot be mounted again")) {
+        throw new Error("Expected remount after unmount to be rejected.");
+      }
+    }),
     runCase("useEffect without deps runs on every update and empty deps run once", () => {
       const root = document.createElement("div");
       const lifecycle = [];
@@ -287,6 +358,85 @@ export async function runRuntimeTests() {
 
       if (joined !== "always:0,once:0,always:1,always:2") {
         throw new Error(`Unexpected effect dependency behavior: ${joined}`);
+      }
+    }),
+    runCase("click, submit, focus and blur events are wired through the renderer", () => {
+      const root = document.createElement("div");
+
+      function App() {
+        const [count, setCount] = useState(0);
+        const [focused, setFocused] = useState(false);
+
+        return h("section", null,
+          h("form", {
+            onSubmit: (event) => {
+              event.preventDefault();
+              setCount((prev) => prev + 1);
+            },
+          },
+            h("input", {
+              value: focused ? "focused" : "blurred",
+              onFocus: () => setFocused(true),
+              onBlur: () => setFocused(false),
+            }),
+            h("button", {
+              onClick: () => setCount((prev) => prev + 1),
+            }, "plus")
+          ),
+          h("p", null, `${count}|${focused ? "focus" : "blur"}`)
+        );
+      }
+
+      createApp({ root, component: App }).mount();
+
+      const input = root.querySelector("input");
+      const button = root.querySelector("button");
+      const form = root.querySelector("form");
+      const summary = root.querySelector("p");
+
+      input.dispatchEvent(new Event("focus", { bubbles: true }));
+      button.dispatchEvent(new Event("click", { bubbles: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true }));
+      input.dispatchEvent(new Event("blur", { bubbles: true }));
+
+      if (summary.textContent !== "2|blur") {
+        throw new Error("Expected click/submit/focus/blur events to update state.");
+      }
+    }),
+    runCase("keyed list reorder updates DOM order", () => {
+      const root = document.createElement("div");
+
+      function App(props) {
+        return h("ul", null,
+          ...props.items.map((item) => h("li", { key: item.id }, item.label))
+        );
+      }
+
+      const app = createApp({
+        root,
+        component: App,
+        props: {
+          items: [
+            { id: "a", label: "A" },
+            { id: "b", label: "B" },
+            { id: "c", label: "C" },
+          ],
+        },
+      });
+
+      app.mount();
+      app.updateProps({
+        items: [
+          { id: "c", label: "C" },
+          { id: "a", label: "A" },
+          { id: "b", label: "B" },
+        ],
+      });
+
+      const labels = root.querySelectorAll("li").map((node) => node.textContent).join(",");
+
+      if (labels !== "C,A,B") {
+        throw new Error(`Expected keyed reorder to update DOM order, received ${labels}.`);
       }
     }),
   ];

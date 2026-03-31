@@ -1,10 +1,11 @@
 /*
  * Responsibility:
- * - inspectEngine이 engine 상태를 발표/디버깅에 필요한 형태로 노출하는지 검증한다.
+ * - inspectEngine과 createApp.inspect가 발표/디버깅에 필요한 정보를 노출하는지 검증한다.
  */
 
 import { inspectEngine } from "../core/engine/inspect.js";
 import { h } from "../core/vnode/h.js";
+import { createApp, useState } from "../index.js";
 
 function runCase(name, fn) {
   try {
@@ -46,6 +47,26 @@ export function runInspectTests() {
 
       if (result.currentVNode !== currentVNode) {
         throw new Error("Expected inspect result to expose the current vnode.");
+      }
+    }),
+    runCase("createApp inspect includes hook and engine metadata", () => {
+      const root = document.createElement("div");
+
+      function App() {
+        const [count] = useState(3);
+        return h("div", null, String(count));
+      }
+
+      const app = createApp({ root, component: App });
+      app.mount();
+      const result = app.inspect();
+
+      if (!Array.isArray(result.hooks) || result.hooks.length !== 1) {
+        throw new Error("Expected createApp inspect to expose hook slots.");
+      }
+
+      if (result.engine.patchCount !== 0) {
+        throw new Error("Expected engine inspect metadata to be nested in createApp inspect.");
       }
     }),
   ];

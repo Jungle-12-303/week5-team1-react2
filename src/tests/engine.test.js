@@ -61,5 +61,20 @@ export function runEngineTests() {
         throw new Error("Expected diff mode to change.");
       }
     }),
+    runCase("engine rejects invalid diff mode", () => {
+      const root = document.createElement("div");
+      const engine = createEngine({ root, initialVNode: h("div", null, "A") });
+      let errorMessage = "";
+
+      try {
+        engine.setDiffMode("invalid");
+      } catch (error) {
+        errorMessage = error.message;
+      }
+
+      if (!errorMessage.includes("Unsupported diff mode")) {
+        throw new Error("Expected invalid diff mode to throw.");
+      }
+    }),
   ];
 }

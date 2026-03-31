@@ -1,6 +1,10 @@
 /*
  * Responsibility:
  * - Node 환경에서 DOM 의존 테스트를 실행할 수 있는 최소 테스트 DOM을 제공한다.
+ *
+ * Easy explanation:
+ * - 브라우저 없이도 DOM 테스트를 돌리기 위해 만든 작은 가짜 DOM이다.
+ * - document, Element, Event, querySelector, dispatchEvent 같은 최소 기능만 흉내 낸다.
  */
 
 function createAttributeArray(attributeMap) {
@@ -269,10 +273,15 @@ class TestEvent {
     this.cancelBubble = false;
     this.target = null;
     this.currentTarget = null;
+    this.defaultPrevented = false;
   }
 
   stopPropagation() {
     this.cancelBubble = true;
+  }
+
+  preventDefault() {
+    this.defaultPrevented = true;
   }
 }
 
