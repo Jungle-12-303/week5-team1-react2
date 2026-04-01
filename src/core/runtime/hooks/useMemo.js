@@ -28,6 +28,7 @@ export function useMemo(factory, deps) {
   let slot = component.hooks[hookIndex];
 
   if (!slot) {
+    // memo도 Hook 슬롯 안에 저장된다. 단, setter 대신 계산 결과를 들고 있다.
     slot = {
       kind: "memo",
       deps,
@@ -37,6 +38,7 @@ export function useMemo(factory, deps) {
   } else if (slot.kind !== "memo") {
     throw new Error(`Hook order mismatch at slot ${hookIndex}. Expected useMemo.`);
   } else if (!areHookDepsEqual(slot.deps, deps)) {
+    // deps가 바뀐 경우에만 다시 계산한다.
     slot.value = factory();
     slot.deps = deps;
   }

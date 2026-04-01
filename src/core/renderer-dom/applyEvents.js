@@ -23,6 +23,7 @@ export function setEvent(element, eventName, handler) {
   const previousHandler = listeners[eventName];
 
   if (previousHandler) {
+    // 같은 이벤트 이름에 새 핸들러가 오면 이전 리스너를 먼저 제거한다.
     element.removeEventListener(eventName, previousHandler);
   }
 
@@ -55,12 +56,14 @@ export function applyEvents(element, events = {}) {
   const listeners = ensureListenerStore(element);
 
   for (const eventName of Object.keys(listeners)) {
+    // 새 VNode에 없는 이벤트는 DOM에서도 제거한다.
     if (!Object.prototype.hasOwnProperty.call(events, eventName)) {
       removeEvent(element, eventName);
     }
   }
 
   for (const [eventName, handler] of Object.entries(events)) {
+    // 새 VNode에 있는 이벤트는 add/remove를 거쳐 현재 DOM 상태와 동기화한다.
     setEvent(element, eventName, handler);
   }
 

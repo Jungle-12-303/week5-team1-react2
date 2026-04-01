@@ -6,11 +6,10 @@
 import { h, useEffect, useMemo, useState } from "../index.js";
 import { CARD_LIBRARY, DEFAULT_SETTINGS, PAGE_META } from "./data/cardLibrary.js";
 import {
-  createPokemonShellCatalog,
   fetchPokemonCatalog,
-  fetchPokemonCardsByNumbers,
   fetchPokemonDetail,
   fetchPokemonLocalizedNames,
+  fetchPokemonPreviewCatalog,
 } from "./data/pokeApiClient.js";
 import { getLocalPokemonName } from "./data/pokemon-names/index.js";
 import { getLocaleMessages, LANGUAGE_OPTIONS, resolveSupportedLocale } from "./i18n/messages.js";
@@ -23,10 +22,20 @@ import { SettingsPage } from "./pages/SettingsPage.js";
 const CATALOG_CACHE_KEY = "card-showcase-catalog-cache";
 const MAX_NATIONAL_DEX = 1025;
 const COLLECTION_ROW_HEIGHT = 430;
-const COLLECTION_ROW_GAP = 18;
-const COLLECTION_PAGE_SIZE = 24;
+const COLLECTION_BUFFER_ROWS = 1;
 const COLLECTION_FALLBACK_VIEWPORT_HEIGHT = 720;
 const COLLECTION_FALLBACK_VIEWPORT_WIDTH = 880;
+const INTERACTIVE_MOTION = Object.freeze({
+  perspective: 820,
+  hoverScale: 1.028,
+  rotateY: 18,
+  rotateX: 16,
+  glareRotation: 30,
+  surfaceShift: 16,
+  shineShiftX: 38,
+  shineShiftY: 18,
+  waveSkew: 14,
+});
 
 function canUseLocalStorage() {
   // 브라우저가 localStorage를 제공하지 않는 환경(예: 일부 테스트 환경)에서도
@@ -47,7 +56,6 @@ function cloneDefaultCards() {
     ...card,
     types: card.types.slice(),
     baseStats: card.baseStats ? { ...card.baseStats } : null,
-    isHydrated: true,
   }));
 }
 
@@ -132,7 +140,6 @@ function readCatalogCache() {
     types: Array.isArray(card.types) ? card.types.slice() : [],
     baseStats: card.baseStats ? { ...card.baseStats } : null,
     isFavorite: false,
-    isHydrated: card.isHydrated ?? true,
   })).filter((card) => Number(card.number) <= MAX_NATIONAL_DEX);
 }
 
@@ -162,7 +169,6 @@ function mergeFavoriteFlags(cards, favoriteIds) {
     types: Array.isArray(card.types) ? card.types.slice() : [],
     baseStats: card.baseStats ? { ...card.baseStats } : null,
     isFavorite: favoriteSet.has(card.id),
-    isHydrated: card.isHydrated ?? true,
   }));
 }
 
@@ -178,7 +184,11 @@ function createPageItems(pages, localizedPages) {
   }, {});
 }
 
-function createCatalogStatusMessage(copy, loadedCount) {
+function createCatalogStatusMessage(copy, loadedCount, isStreamingCatalog) {
+  if (isStreamingCatalog) {
+    return copy.actions.previewLoaded(loadedCount);
+  }
+
   return copy.actions.catalogLoaded(loadedCount);
 }
 
@@ -198,28 +208,8 @@ function resolveCollectionColumnCount(width) {
   return 4;
 }
 
-function resolveCollectionRowsPerPage(columnCount) {
-  return Math.max(1, Math.ceil(COLLECTION_PAGE_SIZE / columnCount));
-}
-
-function resolveCollectionPageHeight(columnCount) {
-  const rowsPerPage = resolveCollectionRowsPerPage(columnCount);
-  return rowsPerPage * COLLECTION_ROW_HEIGHT + Math.max(0, rowsPerPage - 1) * COLLECTION_ROW_GAP;
-}
-
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
-}
-
-function resetCollectionPage(previousValue) {
-  if (previousValue.pageIndex === 0) {
-    return previousValue;
-  }
-
-  return {
-    ...previousValue,
-    pageIndex: 0,
-  };
 }
 
 function sortCards(cards, sortMode, locale) {
@@ -296,22 +286,79 @@ function getCardIndex(cards, selectedCardId) {
   return cards.findIndex((card) => card.id === selectedCardId);
 }
 
-function applyInteractiveStyle(element, options) {
+function createInteractivePresentation(overrides = {}) {
+  // interactivePresentation은 "카드 표면 효과를 만들기 위한 임시 시각 값 모음"이다.
+  // 앱의 의미 있는 데이터(cards, settings, selectedCardId)와 달리,
+  // rotateX/shineShift 같은 값은 카드 표면을 얼마나 기울이고 빛낼지만 설명한다.
+  return {
+    active: false,
+    rotateX: 0,
+    rotateY: 0,
+    glareRotation: 0,
+    surfaceShift: 0,
+    shineShiftX: 0,
+    shineShiftY: 0,
+    waveSkew: 0,
+    holoX: 50,
+    holoY: 50,
+    sparkleOpacity: 0.22,
+    ...overrides,
+  };
+}
+
+function createInteractivePresentationFromPointerEvent(event) {
+  const element = event.currentTarget;
+
+  if (!element || typeof element.getBoundingClientRect !== "function") {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+  const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+  const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
+
+  return createInteractivePresentation({
+    active: true,
+    rotateY: (relativeX - 0.5) * INTERACTIVE_MOTION.rotateY,
+    rotateX: (0.5 - relativeY) * INTERACTIVE_MOTION.rotateX,
+    glareRotation: Math.round((relativeX - 0.5) * INTERACTIVE_MOTION.glareRotation),
+    surfaceShift: Math.round((relativeY - 0.5) * INTERACTIVE_MOTION.surfaceShift),
+    shineShiftX: Math.round((relativeX - 0.5) * INTERACTIVE_MOTION.shineShiftX),
+    shineShiftY: Math.round((relativeY - 0.5) * INTERACTIVE_MOTION.shineShiftY),
+    waveSkew: Math.round((relativeX - 0.5) * INTERACTIVE_MOTION.waveSkew),
+    holoX: Math.round(relativeX * 100),
+    holoY: Math.round(relativeY * 100),
+    sparkleOpacity: Number(
+      (0.34 + Math.abs(relativeX - 0.5) * 0.42 + Math.abs(relativeY - 0.5) * 0.22).toFixed(3)
+    ),
+  });
+}
+
+function createInteractiveStyleValue(presentation, settings) {
+  // 이 문자열은 카드 요소의 inline style로 들어가고,
+  // 내부 레이어들은 여기서 세팅한 CSS 변수를 상속받아 glare/prism/sparkle 위치를 계산한다.
+  const nextPresentation = presentation ?? createInteractivePresentation();
+  const tiltEnabled = nextPresentation.active && settings.tiltEnabled;
+  const glareEnabled = nextPresentation.active && settings.glareEnabled;
+  const tilt = tiltEnabled
+    ? `transform: perspective(${INTERACTIVE_MOTION.perspective}px) rotateX(${nextPresentation.rotateX}deg) rotateY(${nextPresentation.rotateY}deg) scale3d(${INTERACTIVE_MOTION.hoverScale}, ${INTERACTIVE_MOTION.hoverScale}, ${INTERACTIVE_MOTION.hoverScale});`
+    : `transform: perspective(${INTERACTIVE_MOTION.perspective}px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);`;
+  const glare = glareEnabled
+    ? `--glare-opacity: 0.84; --glare-strength: 1.06; --edge-glow-opacity: 0.42; --glare-rotation: ${nextPresentation.glareRotation}deg; --surface-shift: ${nextPresentation.surfaceShift}%; --shine-shift-x: ${nextPresentation.shineShiftX}%; --shine-shift-y: ${nextPresentation.shineShiftY}%; --wave-skew: ${nextPresentation.waveSkew}deg; --holo-x: ${nextPresentation.holoX}%; --holo-y: ${nextPresentation.holoY}%; --sparkle-opacity: ${nextPresentation.sparkleOpacity};`
+    : "--glare-opacity: 0.3; --glare-strength: 0.42; --edge-glow-opacity: 0.18; --glare-rotation: -6deg; --surface-shift: 0%; --shine-shift-x: 0%; --shine-shift-y: 0%; --wave-skew: 0deg; --holo-x: 50%; --holo-y: 50%; --sparkle-opacity: 0.22;";
+
+  return `${tilt} ${glare}`;
+}
+
+function applyInteractiveStyle(element, presentation, settings) {
   // 카드 기울기/광택은 초당 매우 자주 바뀌는 고빈도 인터랙션이다.
-  // 이것을 useState로 처리하면 루트 앱 전체가 매번 다시 렌더될 수 있으므로,
-  // 카드 DOM 요소에 CSS 변수를 직접 써서 시각 효과만 국소적으로 갱신한다.
+  // 컬렉션 그리드의 다수 카드에 이것을 useState로 적용하면 루트 앱 전체가 계속 다시 렌더될 수 있으므로,
+  // 컬렉션 hover는 DOM 요소에 CSS 변수를 직접 써서 시각 효과만 국소적으로 갱신한다.
   if (!element) {
     return;
   }
 
-  const tilt = options.tiltEnabled
-    ? `transform: perspective(960px) rotateX(${options.rotateX}deg) rotateY(${options.rotateY}deg) scale3d(1.02, 1.02, 1.02);`
-    : "transform: perspective(960px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);";
-  const glare = options.glareEnabled
-    ? `--glare-opacity: ${options.glareOpacity ?? 0.84}; --glare-strength: ${options.glareStrength ?? 1.06}; --edge-glow-opacity: ${options.edgeGlowOpacity ?? 0.42}; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%; --shine-shift-x: ${options.shineShiftX}%; --shine-shift-y: ${options.shineShiftY}%; --wave-skew: ${options.waveSkew}deg; --holo-x: ${options.holoX ?? 50}%; --holo-y: ${options.holoY ?? 50}%; --sparkle-opacity: ${options.sparkleOpacity};`
-    : "--glare-opacity: 0.3; --glare-strength: 0.42; --edge-glow-opacity: 0.18; --glare-rotation: -6deg; --surface-shift: 0%; --shine-shift-x: 0%; --shine-shift-y: 0%; --wave-skew: 0deg; --holo-x: 50%; --holo-y: 50%; --sparkle-opacity: 0.22;";
-
-  element.setAttribute("style", `${tilt} ${glare}`);
+  element.setAttribute("style", createInteractiveStyleValue(presentation, settings));
 }
 
 function mergeCardWithDetail(card, detail) {
@@ -469,24 +516,6 @@ function withDisplayName(card, locale, localizedNamesByLocale) {
   };
 }
 
-function mergeCardsByNumber(previousCards, nextCards) {
-  const nextCardMap = new Map(nextCards.map((card) => [card.number, card]));
-
-  return previousCards.map((card) => {
-    const replacement = nextCardMap.get(card.number);
-
-    if (!replacement) {
-      return card;
-    }
-
-    return {
-      ...card,
-      ...replacement,
-      isFavorite: card.isFavorite,
-    };
-  });
-}
-
 export function App(props = {}) {
   // App은 문서에서 정의한 "단일 루트 상태 저장소" 역할을 그대로 수행한다.
   // 여기 있는 상태가 대시보드, 컬렉션, 상세, 설정 페이지 전체를 움직인다.
@@ -508,52 +537,83 @@ export function App(props = {}) {
   const [detailError, setDetailError] = useState(null);
   const [catalogNotice, setCatalogNotice] = useState(null);
   const [isStreamingCatalog, setIsStreamingCatalog] = useState(false);
-  const [hasLoadedFullCatalog, setHasLoadedFullCatalog] = useState(getDataMode() === "local");
-  const [hydratingCardNumbers, setHydratingCardNumbers] = useState({});
   const [localizedNamesByLocale, setLocalizedNamesByLocale] = useState({});
   const [collectionViewport, setCollectionViewport] = useState({
-    pageIndex: 0,
+    scrollTop: 0,
     viewportHeight: COLLECTION_FALLBACK_VIEWPORT_HEIGHT,
     viewportWidth: COLLECTION_FALLBACK_VIEWPORT_WIDTH,
   });
+  const [detailInteractivePresentation, setDetailInteractivePresentation] = useState(() => createInteractivePresentation());
 
+  // [메모 1] 현재 언어에 맞는 문구 사전을 계산한다.
+  // 원본 상태가 아니라 settings.locale에서 파생되는 읽기 전용 결과이므로 useState가 아니라 useMemo다.
   const copy = useMemo(() => getLocaleMessages(settings.locale), [settings.locale]);
+  // [메모 2] 페이지 메타와 번역 문구로 네비게이션 아이템을 만든다.
+  // 사용자가 직접 수정하는 상태가 아니라 copy.pages로부터 계산되는 구조물이므로 useMemo다.
   const pageItems = useMemo(() => createPageItems(PAGE_META, copy.pages), [copy.pages]);
+  // [메모 3] 타입 라벨 맵을 현재 번역본에서 꺼낸다.
+  // 별도 상태 저장소가 아니라 번역 사전의 일부를 읽어오는 파생값이므로 useMemo다.
   const typeLabels = useMemo(() => copy.typeLabels, [copy.typeLabels]);
+  // [메모 4] 카드 원본에 현재 locale 표시 이름을 합쳐 "화면 표시용 카드 목록"을 만든다.
+  // cards 자체를 복제 저장하는 상태가 아니라 locale 적용 결과를 재사용하려는 캐시라서 useMemo다.
   const localizedCards = useMemo(
     () => cards.map((card) => withDisplayName(card, settings.locale, localizedNamesByLocale)),
     [cards, localizedNamesByLocale, settings.locale]
   );
-  // visibleCards는 카드 앱의 핵심 파생 데이터다.
-  // 검색/필터/정렬 결과를 매 렌더마다 즉석 계산하지 않고 useMemo로 캐싱한다.
+  // [메모 5] 검색어/타입/즐겨찾기/정렬 기준을 반영한 최종 카드 목록이다.
+  // 사용자가 직접 setVisibleCards 하는 상태가 아니라 여러 상태를 조합한 계산 결과라서 useMemo다.
   const visibleCards = useMemo(() => sortCards(filterCards(localizedCards, {
     searchKeyword,
     typeFilter,
     favoritesOnly,
   }), sortMode, settings.locale), [favoritesOnly, localizedCards, searchKeyword, settings.locale, sortMode, typeFilter]);
+  // [메모 6] 현재 즐겨찾기 카드 수를 센다.
+  // cards에서 즉시 계산 가능한 숫자이며 단독 원본 상태가 아니므로 useMemo다.
   const favoriteCount = useMemo(() => cards.filter((card) => card.isFavorite).length, [cards]);
+  // [메모 7] selectedCardId에 대응하는 기본 카드 객체를 찾는다.
+  // 선택 카드 자체를 별도 상태로 중복 저장하지 않고, 목록과 id로부터 매핑하는 값이므로 useMemo다.
   const selectedCardBase = useMemo(
     () => localizedCards.find((card) => card.id === selectedCardId) ?? null,
     [localizedCards, selectedCardId]
   );
+  // [메모 8] 선택 카드의 상세 정보 캐시에서 현재 카드 detail을 꺼낸다.
+  // detailById와 selectedCardBase가 정해지면 결정되는 파생 참조값이므로 useMemo다.
   const selectedCardDetail = useMemo(
     () => (selectedCardBase ? detailById[selectedCardBase.id] ?? null : null),
     [detailById, selectedCardBase]
   );
-  const selectedCardNumber = selectedCardBase?.number ?? null;
+  // [메모 9] 기본 카드 정보와 상세 정보를 합쳐 최종 상세 카드 객체를 만든다.
+  // 카드 상세 표현용 합성 결과일 뿐, 독립적인 원본 상태가 아니므로 useMemo다.
   const selectedCard = useMemo(() => mergeCardWithDetail(selectedCardBase, selectedCardDetail), [selectedCardBase, selectedCardDetail]);
+  // [메모 10] 상세 카드 1장의 틸트/광택 presentation을 실제 style 문자열로 변환한다.
+  // style은 detailInteractivePresentation과 settings에서 계산되는 렌더용 값이지, 직접 수정할 상태가 아니므로 useMemo다.
+  const detailInteractiveStyle = useMemo(
+    // detailInteractiveStyle은 "디테일 카드 1장만" useState -> render -> patch 경로를 타도록 만든 시연용 경로다.
+    // 즉, 같은 카드 hover라도 컬렉션은 직접 DOM, 상세 카드는 런타임 경로를 비교해서 볼 수 있다.
+    () => createInteractiveStyleValue(detailInteractivePresentation, settings),
+    [detailInteractivePresentation, settings]
+  );
+  // [메모 11] 현재 보이는 카드 목록을 타입별 요약 데이터로 집계한다.
+  // visibleCards와 typeLabels로부터 계산되는 통계 결과이므로 useMemo다.
   const typeSummary = useMemo(() => buildTypeSummary(visibleCards, typeLabels), [typeLabels, visibleCards]);
+  // [메모 12] 대표 카드 하나를 선택 카드 -> visibleCards 첫 카드 -> localizedCards 첫 카드 순으로 결정한다.
+  // 조건식으로 매번 고를 수 있는 대표값이므로 별도 상태로 들고 있지 않고 useMemo로 계산한다.
   const spotlightCard = useMemo(
     () => selectedCard ?? visibleCards[0] ?? localizedCards[0] ?? null,
     [localizedCards, selectedCard, visibleCards]
   );
-  const spotlightCardNumber = spotlightCard?.number ?? null;
+  // [메모 13] 타입 요약 중 최상위 메시지 후보를 고른다.
+  // typeSummary를 읽어 만든 파생 요약값이라 useMemo다.
   const topTypeLeader = useMemo(() => resolveTopTypeMessage(typeSummary), [typeSummary]);
+  // [메모 14] 대시보드 상단에 보여줄 최종 문장 문자열을 만든다.
+  // 화면 문구는 copy.dashboard와 topTypeLeader가 정해지면 계산되는 결과이므로 useMemo다.
   const topTypeMessage = useMemo(() => (
     topTypeLeader
       ? copy.dashboard.topTypeMessage(topTypeLeader.label, topTypeLeader.count)
       : copy.dashboard.topTypeEmpty
   ), [copy.dashboard, topTypeLeader]);
+  // [메모 15] 현재 선택 카드와 연관된 카드 목록을 계산한다.
+  // 카드 목록/선택 카드/detail에 따라 달라지는 검색 결과이므로 useState가 아니라 useMemo다.
   const relatedCards = useMemo(() => {
     if (!selectedCardBase) {
       return [];
@@ -565,58 +625,69 @@ export function App(props = {}) {
 
     return buildRelatedCards(selectedCardBase, selectedCardDetail, localizedCards);
   }, [localizedCards, selectedCardBase, selectedCardDetail]);
+  // [메모 16] 컬렉션 영역 너비에 맞는 컬럼 수를 계산한다.
+  // viewportWidth에 의해 결정되는 레이아웃 값이지 사용자 입력으로 직접 저장할 상태가 아니라서 useMemo다.
   const collectionColumnCount = useMemo(() => resolveCollectionColumnCount(collectionViewport.viewportWidth), [collectionViewport.viewportWidth]);
-  const collectionPageHeight = useMemo(
-    () => resolveCollectionPageHeight(collectionColumnCount),
-    [collectionColumnCount]
+  // [메모 17] 현재 viewport 높이에 들어올 수 있는 행 수를 계산한다.
+  // scroll 레이아웃 계산 결과이므로 useMemo다.
+  const collectionVisibleRowCount = useMemo(
+    () => Math.max(1, Math.ceil(collectionViewport.viewportHeight / COLLECTION_ROW_HEIGHT)),
+    [collectionViewport.viewportHeight]
   );
-  const collectionTotalPageCount = useMemo(
-    () => Math.max(1, Math.ceil(visibleCards.length / COLLECTION_PAGE_SIZE)),
-    [visibleCards.length]
+  // [메모 18] 전체 카드 개수와 컬럼 수로 총 행 수를 계산한다.
+  // 원본 상태가 아니라 visibleCards.length와 layout 규칙의 조합 결과라 useMemo다.
+  const collectionTotalRowCount = useMemo(
+    () => Math.ceil(visibleCards.length / collectionColumnCount),
+    [collectionColumnCount, visibleCards.length]
   );
-  const collectionCurrentPage = useMemo(
-    () => clamp(collectionViewport.pageIndex, 0, Math.max(0, collectionTotalPageCount - 1)),
-    [collectionTotalPageCount, collectionViewport.pageIndex]
+  // [메모 19] 현재 scrollTop 기준으로 윈도우 시작 행을 계산한다.
+  // 가상 스크롤의 계산식 결과이므로 useMemo다.
+  const collectionStartRow = useMemo(() => {
+    const rawStartRow = Math.floor(collectionViewport.scrollTop / COLLECTION_ROW_HEIGHT) - COLLECTION_BUFFER_ROWS;
+    const maxStartRow = Math.max(0, collectionTotalRowCount - (collectionVisibleRowCount + COLLECTION_BUFFER_ROWS * 2));
+
+    return clamp(rawStartRow, 0, maxStartRow);
+  }, [collectionTotalRowCount, collectionViewport.scrollTop, collectionVisibleRowCount]);
+  // [메모 20] 현재 화면과 버퍼를 고려한 끝 행을 계산한다.
+  // 시작 행과 총 행 수에서 유도되는 값이므로 useMemo다.
+  const collectionEndRow = useMemo(
+    () => Math.min(collectionTotalRowCount, collectionStartRow + collectionVisibleRowCount + COLLECTION_BUFFER_ROWS * 2),
+    [collectionStartRow, collectionTotalRowCount, collectionVisibleRowCount]
   );
-  const collectionStartPage = useMemo(
-    () => Math.max(0, collectionCurrentPage - 1),
-    [collectionCurrentPage]
-  );
-  const collectionEndPage = useMemo(
-    () => Math.min(collectionTotalPageCount, collectionCurrentPage + 2),
-    [collectionCurrentPage, collectionTotalPageCount]
-  );
-  const collectionStartIndex = useMemo(() => collectionStartPage * COLLECTION_PAGE_SIZE, [collectionStartPage]);
+  // [메모 21] 시작 행을 실제 카드 배열 시작 인덱스로 바꾼다.
+  // 행/열 계산의 중간 결과일 뿐 독립 상태가 아니라서 useMemo다.
+  const collectionStartIndex = useMemo(() => collectionStartRow * collectionColumnCount, [collectionColumnCount, collectionStartRow]);
+  // [메모 22] 끝 행을 실제 카드 배열 끝 인덱스로 바꾼다.
+  // 렌더 범위 계산 결과이므로 useMemo다.
   const collectionEndIndex = useMemo(
-    () => Math.min(visibleCards.length, collectionEndPage * COLLECTION_PAGE_SIZE),
-    [collectionEndPage, visibleCards.length]
+    () => Math.min(visibleCards.length, collectionEndRow * collectionColumnCount),
+    [collectionColumnCount, collectionEndRow, visibleCards.length]
   );
+  // [메모 23] 실제로 렌더할 카드 부분 배열만 잘라낸다.
+  // visibleCards 전체를 상태로 둘 필요 없이 현재 창 범위의 slice를 계산해 쓰면 되므로 useMemo다.
   const collectionVisibleSlice = useMemo(
     () => visibleCards.slice(collectionStartIndex, collectionEndIndex),
     [collectionEndIndex, collectionStartIndex, visibleCards]
   );
-  const collectionVisibleNumbers = useMemo(
-    () => collectionVisibleSlice.map((card) => card.number),
-    [collectionVisibleSlice]
-  );
-  const collectionWindowKey = useMemo(
-    () => `${visibleCards.length}:${collectionStartIndex}:${collectionVisibleSlice.map((card) => card.id).join("|")}`,
-    [collectionStartIndex, collectionVisibleSlice, visibleCards.length]
-  );
+  // [메모 24] 가상 스크롤 window가 위에서 얼마나 떨어졌는지 오프셋을 계산한다.
+  // 시작 행으로부터 결정되는 레이아웃 숫자이므로 useMemo다.
   const collectionWindowOffset = useMemo(
-    () => collectionStartPage * collectionPageHeight,
-    [collectionPageHeight, collectionStartPage]
+    () => collectionStartRow * COLLECTION_ROW_HEIGHT,
+    [collectionStartRow]
   );
+  // [메모 25] 스크롤 컨텐츠의 전체 높이를 계산한다.
+  // viewport와 totalRowCount에서 결정되는 레이아웃 값이므로 useMemo다.
   const collectionContentHeight = useMemo(
-    () => Math.max(collectionViewport.viewportHeight, collectionTotalPageCount * collectionPageHeight),
-    [collectionPageHeight, collectionTotalPageCount, collectionViewport.viewportHeight]
+    () => Math.max(collectionViewport.viewportHeight, collectionTotalRowCount * COLLECTION_ROW_HEIGHT),
+    [collectionTotalRowCount, collectionViewport.viewportHeight]
   );
+  // [메모 26] 컬렉션 관련 이벤트 핸들러 묶음 객체를 메모한다.
+  // handlers는 사용자가 직접 바꾸는 상태가 아니라, 현재 copy/typeLabels를 캡처한 함수 집합이므로 useMemo다.
   const collectionHandlers = useMemo(() => ({
     onSearchInput(event) {
       const nextKeyword = event.target.value;
 
       setSearchKeyword(nextKeyword);
-      setCollectionViewport(resetCollectionPage);
       setLastAction(copy.actions.searching(nextKeyword));
     },
 
@@ -624,7 +695,6 @@ export function App(props = {}) {
       const nextType = event.target.value;
 
       setTypeFilter(nextType);
-      setCollectionViewport(resetCollectionPage);
       setLastAction(copy.actions.typeFilterChanged(
         nextType === "all"
           ? copy.toolbar.allTypes
@@ -636,7 +706,6 @@ export function App(props = {}) {
       const nextFavoritesOnly = Boolean(event.target.checked);
 
       setFavoritesOnly(nextFavoritesOnly);
-      setCollectionViewport(resetCollectionPage);
       setLastAction(nextFavoritesOnly ? copy.actions.favoritesOnlyOn : copy.actions.favoritesOnlyOff);
     },
 
@@ -644,7 +713,6 @@ export function App(props = {}) {
       const nextSortMode = event.target.value;
 
       setSortMode(nextSortMode);
-      setCollectionViewport(resetCollectionPage);
       setLastAction(copy.actions.sortChanged(copy.sortOptions[nextSortMode] ?? nextSortMode));
     },
 
@@ -652,18 +720,14 @@ export function App(props = {}) {
       const target = event.currentTarget;
 
       setCollectionViewport((previousValue) => {
-        const nextViewportWidth = target.clientWidth || previousValue.viewportWidth;
-        const nextViewportHeight = target.clientHeight || previousValue.viewportHeight;
-        const nextColumnCount = resolveCollectionColumnCount(nextViewportWidth);
-        const nextPageHeight = resolveCollectionPageHeight(nextColumnCount);
         const nextValue = {
-          pageIndex: Math.max(0, Math.floor(target.scrollTop / nextPageHeight)),
-          viewportHeight: nextViewportHeight,
-          viewportWidth: nextViewportWidth,
+          scrollTop: target.scrollTop,
+          viewportHeight: target.clientHeight || previousValue.viewportHeight,
+          viewportWidth: target.clientWidth || previousValue.viewportWidth,
         };
 
         if (
-          previousValue.pageIndex === nextValue.pageIndex
+          previousValue.scrollTop === nextValue.scrollTop
           && previousValue.viewportHeight === nextValue.viewportHeight
           && previousValue.viewportWidth === nextValue.viewportWidth
         ) {
@@ -695,6 +759,8 @@ export function App(props = {}) {
 
       let nextAction = "Updated a saved card state.";
 
+      // 여기서부터는 "진짜 앱 상태 변경" 경로다.
+      // setCards가 useState setter를 호출하고, 그 안에서 scheduleUpdate가 루트 update를 예약한다.
       setCards((previousCards) =>
         previousCards.map((card) => {
           if (card.id !== cardId) {
@@ -716,56 +782,24 @@ export function App(props = {}) {
       setLastAction(nextAction);
     },
   }), [copy, typeLabels]);
+  // [메모 27] 컬렉션 카드 hover용 포인터 핸들러 묶음 객체를 메모한다.
+  // 직접 DOM 경로에서 쓰는 핸들러 집합이며 settings에 따라 달라지는 함수 모음일 뿐 상태 저장소가 아니라서 useMemo다.
   const collectionPointerHandlers = useMemo(() => ({
     onPointerMove(event) {
       const element = event.currentTarget;
+      const presentation = createInteractivePresentationFromPointerEvent(event);
 
-      if (!element || typeof element.getBoundingClientRect !== "function") {
+      if (!presentation) {
         return;
       }
 
-      const rect = element.getBoundingClientRect();
-      const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
-      const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
-      const rotateY = (relativeX - 0.5) * 18;
-      const rotateX = (0.5 - relativeY) * 16;
-
-      applyInteractiveStyle(element, {
-        tiltEnabled: settings.tiltEnabled,
-        glareEnabled: settings.glareEnabled,
-        rotateX,
-        rotateY,
-        glareRotation: Math.round((relativeX - 0.5) * 22),
-        surfaceShift: Math.round((relativeY - 0.5) * 12),
-        shineShiftX: Math.round((relativeX - 0.5) * 28),
-        shineShiftY: Math.round((relativeY - 0.5) * 12),
-        waveSkew: Math.round((relativeX - 0.5) * 10),
-        holoX: Math.round(relativeX * 100),
-        holoY: Math.round(relativeY * 100),
-        sparkleOpacity: (0.34 + Math.abs(relativeX - 0.5) * 0.42 + Math.abs(relativeY - 0.5) * 0.22).toFixed(3),
-      });
+      applyInteractiveStyle(element, presentation, settings);
     },
 
     onPointerLeave(event) {
       const element = event.currentTarget;
 
-      applyInteractiveStyle(element, {
-        tiltEnabled: false,
-        glareEnabled: settings.glareEnabled,
-        rotateX: 0,
-        rotateY: 0,
-        glareRotation: -4,
-        surfaceShift: 0,
-        shineShiftX: 0,
-        shineShiftY: 0,
-        waveSkew: 0,
-        holoX: 50,
-        holoY: 50,
-        glareOpacity: 0.34,
-        glareStrength: 0.48,
-        edgeGlowOpacity: 0.2,
-        sparkleOpacity: 0.2,
-      });
+      applyInteractiveStyle(element, createInteractivePresentation(), settings);
     },
   }), [settings.glareEnabled, settings.tiltEnabled]);
 
@@ -792,18 +826,14 @@ export function App(props = {}) {
 
     function syncViewport() {
       setCollectionViewport((previousValue) => {
-        const nextViewportWidth = viewport.clientWidth || previousValue.viewportWidth;
-        const nextViewportHeight = viewport.clientHeight || previousValue.viewportHeight;
-        const nextColumnCount = resolveCollectionColumnCount(nextViewportWidth);
-        const nextPageHeight = resolveCollectionPageHeight(nextColumnCount);
         const nextValue = {
-          pageIndex: Math.max(0, Math.floor(viewport.scrollTop / nextPageHeight)),
-          viewportHeight: nextViewportHeight,
-          viewportWidth: nextViewportWidth,
+          scrollTop: viewport.scrollTop,
+          viewportHeight: viewport.clientHeight || previousValue.viewportHeight,
+          viewportWidth: viewport.clientWidth || previousValue.viewportWidth,
         };
 
         if (
-          previousValue.pageIndex === nextValue.pageIndex
+          previousValue.scrollTop === nextValue.scrollTop
           && previousValue.viewportHeight === nextValue.viewportHeight
           && previousValue.viewportWidth === nextValue.viewportWidth
         ) {
@@ -859,16 +889,29 @@ export function App(props = {}) {
           );
           setIsLoading(false);
           setIsStreamingCatalog(false);
-          setHasLoadedFullCatalog(true);
           setLastAction(copy.actions.cachedCatalogLoaded(cachedCards.length));
         }
-        return;
       }
 
       try {
+        if (dataMode === "remote" && cachedCatalog.length === 0) {
+          const previewCards = mergeFavoriteFlags(await fetchPokemonPreviewCatalog(), favoriteIds);
+
+          if (isActive && previewCards.length > 0) {
+            setCards(previewCards);
+            setSelectedCardId((previousValue) =>
+              previewCards.some((card) => card.id === previousValue) ? previousValue : previewCards[0]?.id ?? null
+            );
+            setIsLoading(false);
+            setIsStreamingCatalog(true);
+            setCatalogNotice(copy.notices.previewCatalog);
+            setLastAction(createCatalogStatusMessage(copy, previewCards.length, true));
+          }
+        }
+
         const remoteCards = dataMode === "local"
           ? cloneDefaultCards()
-          : createPokemonShellCatalog();
+          : await fetchPokemonCatalog();
         const nextCards = mergeFavoriteFlags(remoteCards, favoriteIds);
 
         if (!isActive) {
@@ -881,9 +924,12 @@ export function App(props = {}) {
         );
         setIsLoading(false);
         setIsStreamingCatalog(false);
-        setHasLoadedFullCatalog(dataMode === "local");
         setCatalogNotice(null);
-        setLastAction(createCatalogStatusMessage(copy, nextCards.length));
+        setLastAction(createCatalogStatusMessage(copy, nextCards.length, false));
+
+        if (dataMode !== "local") {
+          writeCatalogCache(remoteCards);
+        }
       } catch (error) {
         const fallbackCards = mergeFavoriteFlags(cloneDefaultCards(), favoriteIds);
 
@@ -899,7 +945,6 @@ export function App(props = {}) {
         );
         setIsLoading(false);
         setIsStreamingCatalog(false);
-        setHasLoadedFullCatalog(true);
         setLoadError(null);
         setCatalogNotice(
           cachedCatalog.length > 0
@@ -916,137 +961,6 @@ export function App(props = {}) {
       isActive = false;
     };
   }, [catalogVersion]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    if (getDataMode() !== "remote" || hasLoadedFullCatalog || typeFilter === "all") {
-      return () => {
-        isActive = false;
-      };
-    }
-
-    async function loadFullCatalogForTypeFilter() {
-      const favoriteIds = cards.filter((card) => card.isFavorite).map((card) => card.id);
-
-      setIsLoading(true);
-      setCatalogNotice(null);
-      setLastAction(copy.actions.typeFilterChanged(typeLabels[typeFilter] ?? typeFilter));
-
-      try {
-        const remoteCards = await fetchPokemonCatalog();
-
-        if (!isActive) {
-          return;
-        }
-
-        const nextCards = mergeFavoriteFlags(remoteCards, favoriteIds);
-
-        setCards(nextCards);
-        setHasLoadedFullCatalog(true);
-        setIsLoading(false);
-        setIsStreamingCatalog(false);
-        setCatalogNotice(null);
-        setLastAction(createCatalogStatusMessage(copy, nextCards.length));
-        writeCatalogCache(remoteCards);
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-
-        setIsLoading(false);
-        setTypeFilter("all");
-        setCatalogNotice(copy.notices.fallbackCatalog);
-        setLastAction(`${copy.errors.loadingCardsTitle}. ${error.message}`);
-      }
-    }
-
-    loadFullCatalogForTypeFilter();
-
-    return () => {
-      isActive = false;
-    };
-  }, [cards, copy, hasLoadedFullCatalog, typeFilter, typeLabels]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    if (getDataMode() !== "remote" || hasLoadedFullCatalog || typeFilter !== "all") {
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const targetNumbers = Array.from(new Set([
-      ...(currentPage === "collection" ? collectionVisibleNumbers : []),
-      ...(currentPage === "detail" && selectedCardNumber ? [selectedCardNumber] : []),
-      ...(currentPage === "dashboard" && spotlightCardNumber ? [spotlightCardNumber] : []),
-    ])).filter(Boolean);
-
-    const missingNumbers = targetNumbers.filter((number) => {
-      const targetCard = cards.find((card) => card.number === number);
-      return targetCard && !targetCard.isHydrated && !hydratingCardNumbers[number];
-    });
-
-    if (missingNumbers.length === 0) {
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setHydratingCardNumbers((previousValue) => {
-      const nextValue = { ...previousValue };
-      missingNumbers.forEach((number) => {
-        nextValue[number] = true;
-      });
-      return nextValue;
-    });
-
-    async function hydrateVisibleCards() {
-      try {
-        const hydratedCards = await fetchPokemonCardsByNumbers(missingNumbers);
-
-        if (!isActive || hydratedCards.length === 0) {
-          return;
-        }
-
-        setCards((previousCards) => mergeCardsByNumber(previousCards, hydratedCards));
-      } catch {
-        // Collection shell hydration is a progressive enhancement. If a batch fails,
-        // the shell cards can remain visible and try again on a later pass.
-        if (isActive) {
-          setCatalogNotice(copy.notices.fallbackCatalog);
-        }
-      } finally {
-        if (!isActive) {
-          return;
-        }
-
-        setHydratingCardNumbers((previousValue) => {
-          const nextValue = { ...previousValue };
-          missingNumbers.forEach((number) => {
-            delete nextValue[number];
-          });
-          return nextValue;
-        });
-      }
-    }
-
-    hydrateVisibleCards();
-
-    return () => {
-      isActive = false;
-    };
-  }, [
-    cards,
-    collectionVisibleNumbers,
-    copy,
-    currentPage,
-    hasLoadedFullCatalog,
-    selectedCardNumber,
-    spotlightCardNumber,
-    typeFilter,
-  ]);
 
   useEffect(() => {
     // 즐겨찾기는 사용자의 개인 상태이므로 카드 배열이 바뀔 때마다 따로 저장한다.
@@ -1216,6 +1130,9 @@ export function App(props = {}) {
       return;
     }
 
+    // 카드가 바뀌면 디테일 카드에 남아 있던 hover 표면 값도 함께 초기화한다.
+    // 이 setState 역시 루트 업데이트 큐에 들어가므로 selectedCardId 변경과 같은 렌더 사이클로 묶일 수 있다.
+    setDetailInteractivePresentation(createInteractivePresentation());
     setSelectedCardId(cardId);
     setLastAction(copy.actions.selectedCard(target.displayName ?? target.name));
   }
@@ -1228,6 +1145,7 @@ export function App(props = {}) {
   function handleToggleFavorite(cardId) {
     // 즐겨찾기 변경은 카드 데이터 자체에 기록되지만,
     // 실제로는 대시보드 KPI, 컬렉션 필터, 상세 버튼 상태까지 연쇄적으로 영향을 준다.
+    // 따라서 이 setCards 한 번이 루트 App 전체를 다시 렌더시키는 시작점이 된다.
     let nextAction = "Updated a saved card state.";
 
     setCards((previousCards) =>
@@ -1330,13 +1248,10 @@ export function App(props = {}) {
     setTypeFilter("all");
     setFavoritesOnly(false);
     setSortMode(nextSettings.defaultSortMode);
-    setCollectionViewport(resetCollectionPage);
     setSettings(nextSettings);
     setLoadError(null);
     setDetailError(null);
     setCatalogNotice(null);
-    setHasLoadedFullCatalog(getDataMode() === "local");
-    setHydratingCardNumbers({});
     setLastAction(copy.actions.resetShowcase);
   }
 
@@ -1344,8 +1259,6 @@ export function App(props = {}) {
     // 다시 불러오기는 catalogVersion만 증가시켜
     // 카탈로그 로드 effect를 다시 실행시키는 단순한 방식으로 구현한다.
     setDetailById({});
-    setHasLoadedFullCatalog(getDataMode() === "local");
-    setHydratingCardNumbers({});
     setCatalogVersion((previousValue) => previousValue + 1);
     setLastAction(copy.actions.reloadingDataset);
   }
@@ -1360,60 +1273,23 @@ export function App(props = {}) {
     handleSelectCard(visibleCards[nextIndex].id);
   }
 
-  function handlePointerMove(event) {
-    // 포인터 위치를 0~1 범위로 정규화한 뒤,
-    // 카드 기울기와 광택 위치를 계산한다.
-    // 이 값들은 React-like 상태가 아니라 CSS 변수로만 전달된다.
-    const element = event.currentTarget;
+  function handleDetailPointerMove(event) {
+    // [업데이트 1] 상세 카드 hover는 의도적으로 useState 경로를 타게 만든다.
+    // 즉 포인터 좌표 -> 임시 시각 상태 -> 루트 update 예약 -> render/diff/patch/commit 순서가 실제로 돈다.
+    const nextPresentation = createInteractivePresentationFromPointerEvent(event);
 
-    if (!element || typeof element.getBoundingClientRect !== "function") {
+    if (!nextPresentation) {
       return;
     }
 
-    const rect = element.getBoundingClientRect();
-    const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
-    const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
-    const rotateY = (relativeX - 0.5) * 18;
-    const rotateX = (0.5 - relativeY) * 16;
-
-    applyInteractiveStyle(element, {
-      tiltEnabled: settings.tiltEnabled,
-      glareEnabled: settings.glareEnabled,
-      rotateX,
-      rotateY,
-      glareRotation: Math.round((relativeX - 0.5) * 22),
-      surfaceShift: Math.round((relativeY - 0.5) * 12),
-      shineShiftX: Math.round((relativeX - 0.5) * 28),
-      shineShiftY: Math.round((relativeY - 0.5) * 12),
-      waveSkew: Math.round((relativeX - 0.5) * 10),
-      holoX: Math.round(relativeX * 100),
-      holoY: Math.round(relativeY * 100),
-      sparkleOpacity: (0.34 + Math.abs(relativeX - 0.5) * 0.42 + Math.abs(relativeY - 0.5) * 0.22).toFixed(3),
-    });
+    // [업데이트 2] 이 setter가 useState slot.value를 바꾸고 scheduleUpdate(component)를 부르게 된다.
+    setDetailInteractivePresentation(nextPresentation);
   }
 
-  function handlePointerLeave(event) {
-    // 커서가 카드 밖으로 나가면 시각 효과만 기본값으로 되돌린다.
-    // 앱의 데이터 상태(cards, selectedCardId 등)는 건드리지 않는다.
-    const element = event.currentTarget;
-
-    applyInteractiveStyle(element, {
-      tiltEnabled: false,
-      glareEnabled: settings.glareEnabled,
-      rotateX: 0,
-      rotateY: 0,
-      glareRotation: -4,
-      surfaceShift: 0,
-      shineShiftX: 0,
-      shineShiftY: 0,
-      waveSkew: 0,
-      holoX: 50,
-      holoY: 50,
-      glareOpacity: 0.34,
-      glareStrength: 0.48,
-      edgeGlowOpacity: 0.2,
-      sparkleOpacity: 0.2,
-    });
+  function handleDetailPointerLeave() {
+    // [업데이트 1-보조] pointer leave도 동일하게 하나의 상태 변경으로 취급한다.
+    // 즉 "원래 시각 상태로 복귀"도 update -> patch -> commit 경로를 다시 탄다.
+    setDetailInteractivePresentation(createInteractivePresentation());
   }
 
   function renderCurrentPage() {
@@ -1453,7 +1329,6 @@ export function App(props = {}) {
         rowHeight: COLLECTION_ROW_HEIGHT,
         contentHeight: collectionContentHeight,
         windowOffset: collectionWindowOffset,
-        windowKey: collectionWindowKey,
         searchKeyword,
         typeFilter,
         favoritesOnly,
@@ -1490,8 +1365,9 @@ export function App(props = {}) {
         onSelectCard: handleSelectAndOpen,
         onToggleFavorite: handleToggleFavorite,
         onSelectNext: handleSelectNext,
-        onPointerMove: handlePointerMove,
-        onPointerLeave: handlePointerLeave,
+        onPointerMove: handleDetailPointerMove,
+        onPointerLeave: handleDetailPointerLeave,
+        interactiveStyle: detailInteractiveStyle,
       });
     }
 
@@ -1526,8 +1402,8 @@ export function App(props = {}) {
       onNavigate: handleNavigate,
       onSelectCard: handleSelectAndOpen,
       onToggleFavorite: handleToggleFavorite,
-      onPointerMove: handlePointerMove,
-      onPointerLeave: handlePointerLeave,
+      onPointerMove: collectionPointerHandlers.onPointerMove,
+      onPointerLeave: collectionPointerHandlers.onPointerLeave,
     });
   }
 

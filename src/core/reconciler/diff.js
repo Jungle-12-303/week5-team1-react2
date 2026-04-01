@@ -66,6 +66,10 @@ function createReplacePatch(path, node) {
 }
 
 function walk(oldVNode, newVNode, path, options) {
+  // [업데이트 7-1] walk는 트리를 재귀적으로 따라가며
+  // path 기반의 flat patch list를 만든다.
+  // walk는 old/new VNode를 재귀적으로 따라가며
+  // "어떤 위치(path)에 어떤 patch가 필요한지"를 flat 배열로 모은다.
   if (!oldVNode && newVNode) {
     return createReplacePatch(path, newVNode);
   }
@@ -103,6 +107,8 @@ function walk(oldVNode, newVNode, path, options) {
   }
 
   const patches = [];
+  // 현재 노드의 props/events 차이를 먼저 계산하고,
+  // children 비교는 diffChildren에 위임한다.
   patches.push(...diffProps(oldVNode.props, newVNode.props, path));
   patches.push(...diffEvents(oldVNode.events, newVNode.events, path));
   patches.push(

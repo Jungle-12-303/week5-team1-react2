@@ -23,7 +23,8 @@ function normalizeBatching(batching) {
 }
 
 export function createApp(options = {}) {
-  // 문서에 정의된 공개 옵션을 정규화하고 내부 런타임 인스턴스를 만든다.
+  // [시작 4] createApp은 사용자가 넘긴 root/component/options를 받아
+  // 내부 런타임 객체(FunctionComponent)로 감싼 뒤 공개 facade를 만든다.
   const root = normalizeRoot(options.root);
   const component = options.component;
 
@@ -42,7 +43,7 @@ export function createApp(options = {}) {
 
   return {
     mount() {
-      // 최초 렌더를 시작한다.
+      // [시작 5] mount 호출 시점에 root DOM이 FunctionComponent로 전달된다.
       return instance.mount({ root, props: initialProps });
     },
 

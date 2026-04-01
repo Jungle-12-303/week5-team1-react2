@@ -12,6 +12,8 @@ week5 과제인 `Component · State · Hooks` 구현을 위해 만든 React-like
 - API 명세: [docs/api-spec.md](./docs/api-spec.md)
 - 범위 요약: [docs/week5-scope.md](./docs/week5-scope.md)
 - 시연 앱 기획: [docs/demo-app-plan.md](./docs/demo-app-plan.md)
+- 클래스 다이어그램 및 구조도: [docs/class-and-structure-diagram.md](./docs/class-and-structure-diagram.md)
+- 업데이트/스케줄링 흐름: [docs/update-flow-and-scheduling.md](./docs/update-flow-and-scheduling.md)
 - 학습 문서: [learning-docs/overview.md](./learning-docs/overview.md)
 
 ## 한눈에 보기

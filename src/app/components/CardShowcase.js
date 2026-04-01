@@ -15,6 +15,9 @@ export function CardShowcase(props) {
   return h("article", {
     id: "detail-showcase",
     className: "detail-showcase",
+    // interactiveStyle은 상세 카드 hover 데모가 런타임 경로를 타는지 보여주는 핵심 prop이다.
+    // 루트 App의 state가 바뀌면 이 style 문자열도 바뀌고, diff/patch가 이 속성만 갱신한다.
+    style: props.interactiveStyle,
     "data-card-id": card.id,
     "data-patch-highlight-root": "true",
     "data-tilt-enabled": String(Boolean(props.tiltEnabled)),

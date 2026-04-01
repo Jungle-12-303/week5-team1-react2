@@ -12,6 +12,7 @@ import { assertRootOnlyHookUsage } from "../assertRootOnlyHookUsage.js";
 import { areHookDepsEqual } from "../areHookDepsEqual.js";
 
 function shouldRunEffect(slot, nextDeps) {
+  // 첫 렌더이거나 deps 비교가 불가능하면 effect를 실행한다.
   if (!slot) {
     return true;
   }
@@ -39,6 +40,8 @@ export function useEffect(create, deps) {
 
   let slot = component.hooks[hookIndex];
 
+  // effect는 render 중 즉시 실행하지 않는다.
+  // 우선 "이번 commit 뒤에 실행이 필요한가?"만 판단해 pendingEffects에 기록한다.
   const mustRun = shouldRunEffect(slot, deps);
 
   if (!slot) {
@@ -60,6 +63,7 @@ export function useEffect(create, deps) {
   slot.nextDeps = deps;
 
   if (mustRun) {
+    // commitEffects()가 이 인덱스를 나중에 읽어 실제 effect를 실행한다.
     component.pendingEffects.push(hookIndex);
   }
 

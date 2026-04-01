@@ -117,6 +117,10 @@ export function createEngine(options = {}) {
         mode: state.diffMode,
       });
 
+      // [업데이트 7] diff는 old/new VNode를 비교해 patch 목록만 계산한다.
+      // diff가 "무엇을 바꿀지"를 계산했다면,
+      // applyPatches는 그 목록을 실제 DOM 조작으로 옮긴다.
+      // [업데이트 8] applyPatches가 계산된 patch를 실제 DOM에 반영한다.
       applyPatches(managedDomRoot, patches);
       state.currentVNode = nextVNode;
       state.lastPatches = patches;

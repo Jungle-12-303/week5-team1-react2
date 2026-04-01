@@ -24,6 +24,8 @@ export function createDomFromVNode(vnode, documentRef = document) {
     return documentRef.createTextNode(vnode.text ?? "");
   }
 
+  // 최초 mount에서는 diff 없이 이 경로를 따라
+  // VNode 트리 전체가 실제 DOM 트리로 재귀 생성된다.
   const element = documentRef.createElement(vnode.tag);
   applyProps(element, vnode.props);
   applyEvents(element, vnode.events);

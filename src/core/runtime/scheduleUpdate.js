@@ -10,6 +10,8 @@
  */
 
 function flushScheduledUpdate(component, token) {
+  // microtask가 실제로 실행됐을 때,
+  // 내가 최신 예약 건이 아니면 오래된 콜백이므로 버린다.
   if (component.scheduledUpdate !== token) {
     return;
   }
@@ -20,6 +22,8 @@ function flushScheduledUpdate(component, token) {
   }
 
   component.scheduledUpdate = null;
+  // 여기서부터 실제 update 사이클이 시작된다:
+  // performRender -> diff -> patch -> commitEffects
   component.update();
 }
 
@@ -29,10 +33,15 @@ export function scheduleUpdate(component) {
   }
 
   if (component.batching === "microtask") {
+    // [업데이트 4-2] microtask 모드에서는 지금 즉시 update하지 않고 예약만 걸 수 있다.
+    // 이미 예약이 있으면 같은 동기 구간의 여러 setState를 한 번의 update로 묶는다.
     if (component.scheduledUpdate && !component.scheduledUpdate.cancelled) {
       return;
     }
 
+    // token은 "이번 예약 건의 신분증"이다.
+    // queueMicrotask 콜백도 이 객체를 클로저로 기억하므로,
+    // 나중에 실행될 때 지금 최신 예약 건이 맞는지 식별할 수 있다.
     const token = { cancelled: false };
     component.scheduledUpdate = token;
 
@@ -43,6 +52,7 @@ export function scheduleUpdate(component) {
     return;
   }
 
+  // [업데이트 4-3] sync 모드에서는 setter가 호출된 바로 그 흐름에서 update를 즉시 실행한다.
   component.update();
 }
 

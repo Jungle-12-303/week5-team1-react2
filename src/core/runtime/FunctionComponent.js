@@ -151,19 +151,21 @@ export class FunctionComponent {
   }
 
   performRender(props = this.currentProps) {
-    // 렌더를 시작할 때마다 현재 props를 확정하고,
+    // [업데이트 6] 렌더를 시작할 때마다 현재 props를 확정하고,
     // Hook을 처음부터 다시 읽기 위해 cursor를 0으로 되돌린다.
     this.currentProps = normalizeProps(props);
     this.hookCursor = 0;
+    // useEffect가 "나중에 실행할 일"을 새로 수집할 수 있도록 초기화한다.
     this.pendingEffects = [];
     this.renderCount += 1;
 
+    // 이제부터 루트 App 본문이 실행되는 동안 Hook 사용을 허용한다.
     setCurrentComponent(this, { allowHooks: true });
 
     try {
-      // 1. 루트 App 함수를 실행해 VNode 트리를 만든다.
+      // [업데이트 6-1] 루트 App 함수를 실행해 새 VNode 초안을 만든다.
       const unresolvedVNode = this.renderFn(this.currentProps);
-      // 2. 자식 함수형 컴포넌트를 모두 실제 VNode로 전개한다.
+      // [업데이트 6-2] 자식 함수형 컴포넌트를 모두 실제 VNode로 전개한다.
       const resolvedVNode = resolveComponentTree(unresolvedVNode);
 
       if (this.expectedHookCount === null) {
@@ -191,7 +193,9 @@ export class FunctionComponent {
       throw new Error("FunctionComponent instances cannot be mounted again after unmount.");
     }
 
+    // [시작 6] 전달받은 root DOM을 루트 컴포넌트 인스턴스에 저장한다.
     this.rootElement = root;
+    // [시작 7] 첫 렌더를 수행해 초기 VNode를 만든다.
     const nextVNode = this.performRender(props);
 
     // createEngine은 실제 diff/patch와 DOM 반영을 맡는 저수준 엔진이다.
@@ -203,14 +207,14 @@ export class FunctionComponent {
       historyLimit: this.historyLimit,
     });
 
-    // 최초 mount는 diff 없이 DOM을 한 번에 만든다.
+    // [시작 8] 최초 mount는 oldVNode가 없으므로 diff 없이 DOM을 한 번에 생성한다.
     this.engine.render(nextVNode);
     this.currentVNode = nextVNode;
     this.lastPatches = [];
     this.isMounted = true;
     this.hasMountedOnce = true;
 
-    // 화면이 실제로 반영된 뒤에만 effect를 실행해야 하므로 마지막에 commit한다.
+    // [시작 9] 최초 DOM이 실제로 붙은 뒤에만 effect를 실행해야 하므로 마지막에 commit한다.
     commitEffects(this);
     this.publishRuntimeSnapshot("mount");
 
@@ -227,7 +231,11 @@ export class FunctionComponent {
       this.currentProps = normalizeProps(nextProps);
     }
 
-    // update는 새 VNode를 만들고, 이전 VNode와 비교해 필요한 DOM만 바꾼다.
+    // [업데이트 5] update 전체 사이클:
+    // 1) 새 VNode 생성
+    // 2) 이전 VNode와 diff
+    // 3) 필요한 DOM patch만 적용
+    // 4) DOM 반영 후 effect commit
     const nextVNode = this.performRender(this.currentProps);
     const result = this.engine.patch(nextVNode);
 
@@ -236,6 +244,7 @@ export class FunctionComponent {
     this.totalPatchCount += countDisplayPatches(result.patches);
     this.rawTotalPatchCount += result.patches.length;
 
+    // [업데이트 9] document.title, localStorage, fetch 후처리 같은 useEffect는 항상 patch 뒤에 실행한다.
     commitEffects(this);
     this.publishRuntimeSnapshot("update");
 

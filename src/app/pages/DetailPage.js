@@ -125,6 +125,9 @@ export function DetailPage(props) {
           tiltEnabled: props.settings.tiltEnabled,
           glareEnabled: props.settings.glareEnabled,
           highResImage: props.settings.highResImage,
+          // detail 카드 1장은 런타임 시연용으로 style prop 자체가 상태 기반으로 바뀐다.
+          // 즉 hover 값이 바뀌면 App의 useState가 먼저 변하고, 그 결과가 여기까지 props로 내려온다.
+          interactiveStyle: props.interactiveStyle,
           onPointerMove: props.onPointerMove,
           onPointerLeave: props.onPointerLeave,
         }),

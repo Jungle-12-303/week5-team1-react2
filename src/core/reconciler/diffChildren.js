@@ -48,6 +48,7 @@ function diffChildrenByIndex(oldChildren, newChildren, parentPath, walk) {
   const maxLength = Math.max(oldChildren.length, newChildren.length);
 
   for (let index = 0; index < maxLength; index += 1) {
+    // index 모드는 "같은 위치의 child끼리 비교"하는 가장 단순한 전략이다.
     const oldChild = oldChildren[index];
     const newChild = newChildren[index];
     const childPath = [...parentPath, index];
@@ -84,6 +85,7 @@ function buildKeyedMap(children) {
 
 function diffChildrenByKey(oldChildren, newChildren, parentPath, walk, mode) {
   const patches = [];
+  // keyed 모드는 key 또는 identity를 기준으로 "같은 child가 어디로 이동했는지" 추적한다.
   const oldMap = buildKeyedMap(oldChildren);
   const visited = new Set();
 
@@ -142,6 +144,7 @@ export function diffChildren(oldChildren = [], newChildren = [], parentPath = []
   }
 
   if (hasAnyKey(oldChildren) || hasAnyKey(newChildren)) {
+    // auto 모드에서는 key가 하나라도 보이면 keyed 전략을 택한다.
     return diffChildrenByKey(oldChildren, newChildren, parentPath, walk, DIFF_MODES.AUTO);
   }
 
