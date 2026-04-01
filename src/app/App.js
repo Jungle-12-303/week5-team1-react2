@@ -312,6 +312,7 @@ function mergeCardWithDetail(card, detail) {
     weight: detail.weight ?? card.weight,
     baseStats: detail.baseStats ?? card.baseStats,
     flavor: detail.flavor ?? card.flavor,
+    evolutionDexNumbers: detail.evolutionDexNumbers?.length ? detail.evolutionDexNumbers.slice() : [],
   };
 }
 
@@ -324,7 +325,86 @@ function createLocalDetail(card) {
     weight: card.weight,
     baseStats: card.baseStats ? { ...card.baseStats } : null,
     flavor: card.flavor,
+    evolutionDexNumbers: [],
   };
+}
+
+function countSharedTypes(leftTypes, rightTypes) {
+  if (!Array.isArray(leftTypes) || !Array.isArray(rightTypes)) {
+    return 0;
+  }
+
+  const rightSet = new Set(rightTypes);
+  return leftTypes.reduce((count, type) => count + (rightSet.has(type) ? 1 : 0), 0);
+}
+
+function getBaseStatTotal(card) {
+  if (!card?.baseStats) {
+    return 0;
+  }
+
+  return Object.values(card.baseStats).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
+function scoreRelatedCard(selectedCard, candidate) {
+  if (!selectedCard || !candidate || selectedCard.id === candidate.id) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const sharedTypeCount = countSharedTypes(selectedCard.types, candidate.types);
+  const statDistance = Math.abs(getBaseStatTotal(selectedCard) - getBaseStatTotal(candidate));
+  const dexDistance = Math.abs(Number(selectedCard.number) - Number(candidate.number));
+
+  return sharedTypeCount * 100 - statDistance - dexDistance * 0.25;
+}
+
+function buildRelatedCards(selectedCardBase, selectedCardDetail, allCards) {
+  const pool = Array.isArray(allCards) ? allCards : [];
+
+  if (!selectedCardBase) {
+    return [];
+  }
+
+  const selectedCard = mergeCardWithDetail(selectedCardBase, selectedCardDetail);
+  const dedupedCards = new Map();
+
+  pool.forEach((card) => {
+    if (!card || card.id === selectedCard.id) {
+      return;
+    }
+
+    if (!dedupedCards.has(card.number)) {
+      dedupedCards.set(card.number, card);
+    }
+  });
+
+  const evolutionDexNumbers = Array.isArray(selectedCardDetail?.evolutionDexNumbers)
+    ? selectedCardDetail.evolutionDexNumbers
+    : [];
+  const evolutionSet = new Set(evolutionDexNumbers.filter((number) => number !== selectedCard.number));
+  const evolutionCards = Array.from(dedupedCards.values())
+    .filter((card) => evolutionSet.has(card.number))
+    .sort(
+      (left, right) => evolutionDexNumbers.indexOf(left.number) - evolutionDexNumbers.indexOf(right.number)
+    );
+
+  if (evolutionCards.length > 0) {
+    return evolutionCards;
+  }
+
+  return Array.from(dedupedCards.values())
+    .filter((card) => countSharedTypes(selectedCard.types, card.types) > 0)
+    .sort((left, right) => {
+      const scoreDelta = scoreRelatedCard(selectedCard, right) - scoreRelatedCard(selectedCard, left);
+
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+
+      return Math.abs(Number(selectedCard.number) - Number(left.number))
+        - Math.abs(Number(selectedCard.number) - Number(right.number));
+    })
+    .slice(0, 3);
 }
 
 function readCardIdFromEvent(event) {
@@ -401,7 +481,11 @@ export function App(props = {}) {
     () => localizedCards.find((card) => card.id === selectedCardId) ?? null,
     [localizedCards, selectedCardId]
   );
-  const selectedCard = useMemo(() => mergeCardWithDetail(selectedCardBase, selectedCardBase ? detailById[selectedCardBase.id] : null), [detailById, selectedCardBase]);
+  const selectedCardDetail = useMemo(
+    () => (selectedCardBase ? detailById[selectedCardBase.id] ?? null : null),
+    [detailById, selectedCardBase]
+  );
+  const selectedCard = useMemo(() => mergeCardWithDetail(selectedCardBase, selectedCardDetail), [selectedCardBase, selectedCardDetail]);
   const typeSummary = useMemo(() => buildTypeSummary(visibleCards, typeLabels), [typeLabels, visibleCards]);
   const spotlightCard = useMemo(
     () => selectedCard ?? visibleCards[0] ?? localizedCards[0] ?? null,
@@ -414,12 +498,16 @@ export function App(props = {}) {
       : copy.dashboard.topTypeEmpty
   ), [copy.dashboard, topTypeLeader]);
   const relatedCards = useMemo(() => {
-    if (!selectedCard) {
-      return visibleCards.slice(0, 3);
+    if (!selectedCardBase) {
+      return [];
     }
 
-    return visibleCards.filter((card) => card.id !== selectedCard.id).slice(0, 3);
-  }, [selectedCard, visibleCards]);
+    if (getDataMode() === "remote" && !selectedCardDetail) {
+      return [];
+    }
+
+    return buildRelatedCards(selectedCardBase, selectedCardDetail, localizedCards);
+  }, [localizedCards, selectedCardBase, selectedCardDetail]);
   const collectionColumnCount = useMemo(() => resolveCollectionColumnCount(collectionViewport.viewportWidth), [collectionViewport.viewportWidth]);
   const collectionVisibleRowCount = useMemo(
     () => Math.max(1, Math.ceil(collectionViewport.viewportHeight / COLLECTION_ROW_HEIGHT)),

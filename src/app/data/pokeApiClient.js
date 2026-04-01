@@ -245,6 +245,22 @@ function extractFlavorText(speciesData) {
   return englishEntry.flavor_text.replace(/\s+/g, " ").trim();
 }
 
+function flattenEvolutionChain(node, collector = []) {
+  if (!node || !node.species?.url) {
+    return collector;
+  }
+
+  const speciesIdMatch = /\/pokemon-species\/(\d+)\/?$/.exec(node.species.url);
+
+  if (speciesIdMatch) {
+    collector.push(String(Number(speciesIdMatch[1])).padStart(3, "0"));
+  }
+
+  const evolvesTo = Array.isArray(node.evolves_to) ? node.evolves_to : [];
+  evolvesTo.forEach((child) => flattenEvolutionChain(child, collector));
+  return collector;
+}
+
 export async function fetchPokemonDetail(card, fetchImpl = globalThis.fetch) {
   assertFetch(fetchImpl);
 
@@ -252,6 +268,9 @@ export async function fetchPokemonDetail(card, fetchImpl = globalThis.fetch) {
   // pokemon + species 두 응답을 합쳐 필요한 필드만 뽑는다.
   const pokemonData = await readJson(fetchImpl(`${API_ROOT}/pokemon/${Number(card.number)}`));
   const speciesData = await readJson(fetchImpl(pokemonData.species.url));
+  const evolutionChainData = speciesData.evolution_chain?.url
+    ? await readJson(fetchImpl(speciesData.evolution_chain.url))
+    : null;
 
   return {
     types: sortTypes(pokemonData.types.map((entry) => entry.type.name)),
@@ -266,6 +285,7 @@ export async function fetchPokemonDetail(card, fetchImpl = globalThis.fetch) {
       speed: pokemonData.stats.find((entry) => entry.stat.name === "speed")?.base_stat ?? 0,
     },
     flavor: extractFlavorText(speciesData),
+    evolutionDexNumbers: evolutionChainData ? flattenEvolutionChain(evolutionChainData.chain) : [],
   };
 }
 

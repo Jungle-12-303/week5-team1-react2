@@ -193,6 +193,195 @@ export async function runAppTests() {
         throw new Error("Expected detail page to render the full base stat list instead of HP alone.");
       }
     }),
+    runCase("detail related card buttons navigate after the evolution chain loads", async () => {
+      const originalFetch = globalThis.fetch;
+      const typeRows = {
+        grass: ["43", "44", "45", "69", "70", "71"],
+        poison: ["43", "44", "45", "69", "70", "71"],
+      };
+      const pokemonRows = {
+        43: { name: "oddish", number: "043", types: ["grass", "poison"], height: 5, weight: 54, stats: [45, 50, 55, 75, 65, 30] },
+        44: { name: "gloom", number: "044", types: ["grass", "poison"], height: 8, weight: 86, stats: [60, 65, 70, 85, 75, 40] },
+        45: { name: "vileplume", number: "045", types: ["grass", "poison"], height: 12, weight: 186, stats: [75, 80, 85, 110, 90, 50] },
+        69: { name: "bellsprout", number: "069", types: ["grass", "poison"], height: 7, weight: 40, stats: [50, 75, 35, 70, 30, 40] },
+        70: { name: "weepinbell", number: "070", types: ["grass", "poison"], height: 10, weight: 64, stats: [65, 90, 50, 85, 45, 55] },
+        71: { name: "victreebel", number: "071", types: ["grass", "poison"], height: 17, weight: 155, stats: [80, 105, 65, 100, 70, 70] },
+      };
+
+      function createPokemonResponse(id) {
+        const row = pokemonRows[id];
+        return {
+          id,
+          height: row.height,
+          weight: row.weight,
+          types: row.types.map((type) => ({ type: { name: type } })),
+          stats: [
+            { stat: { name: "hp" }, base_stat: row.stats[0] },
+            { stat: { name: "attack" }, base_stat: row.stats[1] },
+            { stat: { name: "defense" }, base_stat: row.stats[2] },
+            { stat: { name: "special-attack" }, base_stat: row.stats[3] },
+            { stat: { name: "special-defense" }, base_stat: row.stats[4] },
+            { stat: { name: "speed" }, base_stat: row.stats[5] },
+          ],
+          species: { url: `https://pokeapi.co/api/v2/pokemon-species/${id}/` },
+        };
+      }
+
+      globalThis.fetch = (url) => {
+        if (url.includes("/pokemon?limit=10&offset=0")) {
+          return createJsonResponse({
+            results: [43, 44, 45, 69, 70, 71].map((id) => ({
+              name: pokemonRows[id].name,
+              url: `https://pokeapi.co/api/v2/pokemon/${id}/`,
+            })),
+          });
+        }
+
+        if (url.includes("/pokemon?limit=1025&offset=0")) {
+          return createJsonResponse({
+            results: [43, 44, 45, 69, 70, 71].map((id) => ({
+              name: pokemonRows[id].name,
+              url: `https://pokeapi.co/api/v2/pokemon/${id}/`,
+            })),
+          });
+        }
+
+        if (url.endsWith("/type")) {
+          return createJsonResponse({
+            results: [
+              { name: "grass", url: "https://pokeapi.co/api/v2/type/12/" },
+              { name: "poison", url: "https://pokeapi.co/api/v2/type/4/" },
+            ],
+          });
+        }
+
+        if (url.endsWith("/type/12/")) {
+          return createJsonResponse({
+            name: "grass",
+            pokemon: typeRows.grass.map((id) => ({
+              pokemon: { name: pokemonRows[id].name, url: `https://pokeapi.co/api/v2/pokemon/${id}/` },
+            })),
+          });
+        }
+
+        if (url.endsWith("/type/4/")) {
+          return createJsonResponse({
+            name: "poison",
+            pokemon: typeRows.poison.map((id) => ({
+              pokemon: { name: pokemonRows[id].name, url: `https://pokeapi.co/api/v2/pokemon/${id}/` },
+            })),
+          });
+        }
+
+        const pokemonMatch = /\/pokemon\/(\d+)\/?$/.exec(url);
+
+        if (pokemonMatch) {
+          const id = Number(pokemonMatch[1]);
+          return createJsonResponse(createPokemonResponse(id));
+        }
+
+        const speciesMatch = /\/pokemon-species\/(\d+)\/?$/.exec(url);
+
+        if (speciesMatch) {
+          const id = Number(speciesMatch[1]);
+          return createJsonResponse({
+            name: pokemonRows[id].name,
+            names: [{ language: { name: "en" }, name: pokemonRows[id].name.replace(/^./, (value) => value.toUpperCase()) }],
+            flavor_text_entries: [
+              { language: { name: "en" }, flavor_text: `${pokemonRows[id].name} flavor text.` },
+            ],
+            evolution_chain: { url: id <= 45 ? "https://pokeapi.co/api/v2/evolution-chain/18/" : "https://pokeapi.co/api/v2/evolution-chain/32/" },
+          });
+        }
+
+        if (url.endsWith("/evolution-chain/18/")) {
+          return createJsonResponse({
+            chain: {
+              species: { url: "https://pokeapi.co/api/v2/pokemon-species/43/" },
+              evolves_to: [
+                {
+                  species: { url: "https://pokeapi.co/api/v2/pokemon-species/44/" },
+                  evolves_to: [
+                    {
+                      species: { url: "https://pokeapi.co/api/v2/pokemon-species/45/" },
+                      evolves_to: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+
+        if (url.endsWith("/evolution-chain/32/")) {
+          return createJsonResponse({
+            chain: {
+              species: { url: "https://pokeapi.co/api/v2/pokemon-species/69/" },
+              evolves_to: [
+                {
+                  species: { url: "https://pokeapi.co/api/v2/pokemon-species/70/" },
+                  evolves_to: [
+                    {
+                      species: { url: "https://pokeapi.co/api/v2/pokemon-species/71/" },
+                      evolves_to: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      try {
+        const { root } = createMountedApp({ dataMode: "remote", locale: "en" });
+        await flushMicrotasks();
+        await flushMicrotasks();
+        await flushMicrotasks();
+
+        click(root.querySelector("#nav-collection"));
+        await flushMicrotasks();
+
+        inputValue(root.querySelector("#collection-search-input"), "vile");
+        await flushMicrotasks();
+
+        click(root.querySelector("#card-open-card-045"));
+        await flushMicrotasks();
+        await flushMicrotasks();
+        await flushMicrotasks();
+
+        const relatedButtons = [
+          root.querySelector("#detail-related-card-043"),
+          root.querySelector("#detail-related-card-044"),
+          root.querySelector("#detail-related-card-069"),
+          root.querySelector("#detail-related-card-070"),
+          root.querySelector("#detail-related-card-071"),
+        ].filter(Boolean);
+        const relatedNames = relatedButtons.map((button) => button.textContent ?? "");
+
+        if (relatedButtons.length === 0) {
+          throw new Error("Expected the detail page to render a related card button after loading evolution data.");
+        }
+
+        if (!relatedNames.includes("Oddish") || !relatedNames.includes("Gloom")) {
+          throw new Error(`Expected Vileplume to recommend its evolution line first, received ${relatedNames.join(", ")}.`);
+        }
+
+        click(relatedButtons[0]);
+        await flushMicrotasks();
+        await flushMicrotasks();
+
+        const currentTitle = root.querySelector("#detail-card-name")?.textContent ?? "";
+
+        if (!currentTitle || currentTitle.includes("Vileplume")) {
+          throw new Error(`Expected a related card click to navigate away from Vileplume, received ${currentTitle}.`);
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }),
     runCase("card showcase favorites update dashboard metrics immediately", async () => {
       const { root } = createMountedApp();
       await flushMicrotasks();
