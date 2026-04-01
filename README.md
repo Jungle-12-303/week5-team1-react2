@@ -20,7 +20,7 @@ week5 과제인 `Component · State · Hooks` 구현을 위해 만든 React-like
 - 현재 시연 앱: `Dashboard / Collection / Detail / Settings`
 - 데이터 출처: `PokeAPI` + `official-artwork` 이미지
 - 정규 전국도감 범위: `#001 ~ #1025`
-- 현재 테스트 결과: `64 passed, 0 failed, 0 skipped`
+- 현재 테스트 결과: `67 passed, 0 failed, 0 skipped`
 
 ## 앱 미리보기
 
@@ -145,6 +145,13 @@ sequenceDiagram
 - 원격 데이터 로더: [src/app/data/pokeApiClient.js](./src/app/data/pokeApiClient.js)
 - fallback 데이터: [src/app/data/cardLibrary.js](./src/app/data/cardLibrary.js)
 
+현재 앱은 아래 시연용 보강도 포함합니다.
+
+- Collection은 한 번에 전체 1025장을 그리지 않고, 가상 스크롤 방식으로 화면 근처 카드만 렌더합니다.
+- 원격 카탈로그는 먼저 `10장 preview`를 보여준 뒤 전체 전국도감 카탈로그를 백그라운드로 이어서 불러옵니다.
+- Detail은 메인 쇼케이스 카드 아래에 `Game Sprite` 비교 카드를 함께 보여줍니다.
+- 데스크톱에서는 `Render / Patch Inspector`로 렌더/patch를 시각화하고, 모바일에서는 화면을 비우기 위해 숨깁니다.
+
 ## 데이터와 이미지 출처
 
 현재 카드 데이터와 이미지는 아래 공개 소스를 사용합니다.
@@ -158,6 +165,12 @@ sequenceDiagram
 
 - 마지막 성공 캐시가 있으면 캐시를 사용하고
 - 없으면 [src/app/data/cardLibrary.js](./src/app/data/cardLibrary.js)의 fallback 카드로 내려갑니다.
+
+초기 진입 성능을 위해 원격 카탈로그는 아래 순서로 처리합니다.
+
+- 먼저 `10장 preview`를 빠르게 렌더
+- 이어서 전체 `#001 ~ #1025` 카탈로그를 백그라운드로 로드
+- 실패 시 캐시 또는 fallback 카드로 안전하게 복귀
 
 ## 실제 React와의 공통점
 
@@ -192,10 +205,12 @@ sequenceDiagram
 - 즐겨찾기 반영
 - 설정 즉시 반영
 - 원격 카탈로그 fallback 안내
+- Inspector와 이미지 src patch 시각화
+- 컬렉션 가상 스크롤 렌더링
 
 현재 테스트 결과:
 
-- `64 passed, 0 failed, 0 skipped`
+- `67 passed, 0 failed, 0 skipped`
 
 ## 실행 방법
 
