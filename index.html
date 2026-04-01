@@ -8,9 +8,9 @@
     :root {
       --bg: #08111f;
       --bg-soft: #0f1c2f;
-      --panel: rgba(11, 23, 42, 0.84);
-      --panel-strong: rgba(14, 28, 53, 0.92);
-      --panel-soft: rgba(25, 45, 77, 0.72);
+      --panel: rgba(18, 34, 58, 0.8);
+      --panel-strong: rgba(22, 40, 68, 0.88);
+      --panel-soft: rgba(34, 58, 92, 0.68);
       --text: #eef4ff;
       --muted: #93a7c7;
       --line: rgba(147, 167, 199, 0.18);
@@ -48,10 +48,10 @@
       font-family: "Pretendard", "Segoe UI", "Apple SD Gothic Neo", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 10% 10%, rgba(124, 92, 255, 0.22), transparent 28rem),
-        radial-gradient(circle at 90% 0%, rgba(56, 189, 248, 0.18), transparent 26rem),
-        radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.12), transparent 26rem),
-        linear-gradient(180deg, #09111d 0%, #08111f 40%, #050a14 100%);
+        radial-gradient(circle at 10% 10%, rgba(124, 92, 255, 0.28), transparent 30rem),
+        radial-gradient(circle at 90% 0%, rgba(56, 189, 248, 0.22), transparent 28rem),
+        radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.16), transparent 28rem),
+        linear-gradient(180deg, #0d1830 0%, #0b1628 40%, #08111f 100%);
     }
 
     #app {
@@ -190,8 +190,8 @@
       padding: 14px 18px;
       border-radius: 18px;
       background:
-        linear-gradient(135deg, rgba(124, 92, 255, 0.18), rgba(56, 189, 248, 0.12)),
-        rgba(11, 23, 42, 0.88);
+        linear-gradient(135deg, rgba(124, 92, 255, 0.22), rgba(56, 189, 248, 0.16)),
+        rgba(18, 34, 58, 0.84);
     }
 
     .runtime-notice-bar {
@@ -202,8 +202,8 @@
       padding: 14px 18px;
       border-radius: 18px;
       background:
-        linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(248, 113, 113, 0.08)),
-        rgba(22, 16, 8, 0.92);
+        linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(248, 113, 113, 0.12)),
+        rgba(38, 26, 12, 0.86);
     }
 
     .global-status-message {
@@ -661,7 +661,7 @@
       position: relative;
       overflow: hidden;
       border-radius: 28px;
-      transition: transform 180ms ease, box-shadow 180ms ease;
+      transition: transform 540ms cubic-bezier(0.22, 0.8, 0.2, 1), box-shadow 320ms ease;
       transform-style: preserve-3d;
       will-change: transform;
     }
@@ -693,6 +693,12 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
+      transition:
+        transform 620ms cubic-bezier(0.2, 0.82, 0.2, 1),
+        opacity 980ms ease-out,
+        filter 980ms ease-out,
+        background 980ms ease-out,
+        box-shadow 980ms ease-out;
     }
 
     .card-light-frame {
@@ -746,6 +752,7 @@
       object-fit: contain;
       position: relative;
       z-index: 4;
+      transition: transform 560ms cubic-bezier(0.22, 0.8, 0.2, 1);
     }
 
     .card-glare-layer {

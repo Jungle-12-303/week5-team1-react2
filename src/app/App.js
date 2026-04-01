@@ -308,7 +308,7 @@ function applyInteractiveStyle(element, options) {
     ? `transform: perspective(960px) rotateX(${options.rotateX}deg) rotateY(${options.rotateY}deg) scale3d(1.02, 1.02, 1.02);`
     : "transform: perspective(960px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);";
   const glare = options.glareEnabled
-    ? `--glare-opacity: 0.84; --glare-strength: 1.06; --edge-glow-opacity: 0.42; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%; --shine-shift-x: ${options.shineShiftX}%; --shine-shift-y: ${options.shineShiftY}%; --wave-skew: ${options.waveSkew}deg; --holo-x: ${options.holoX}%; --holo-y: ${options.holoY}%; --sparkle-opacity: ${options.sparkleOpacity};`
+    ? `--glare-opacity: ${options.glareOpacity ?? 0.84}; --glare-strength: ${options.glareStrength ?? 1.06}; --edge-glow-opacity: ${options.edgeGlowOpacity ?? 0.42}; --glare-rotation: ${options.glareRotation}deg; --surface-shift: ${options.surfaceShift}%; --shine-shift-x: ${options.shineShiftX}%; --shine-shift-y: ${options.shineShiftY}%; --wave-skew: ${options.waveSkew}deg; --holo-x: ${options.holoX ?? 50}%; --holo-y: ${options.holoY ?? 50}%; --sparkle-opacity: ${options.sparkleOpacity};`
     : "--glare-opacity: 0.3; --glare-strength: 0.42; --edge-glow-opacity: 0.18; --glare-rotation: -6deg; --surface-shift: 0%; --shine-shift-x: 0%; --shine-shift-y: 0%; --wave-skew: 0deg; --holo-x: 50%; --holo-y: 50%; --sparkle-opacity: 0.22;";
 
   element.setAttribute("style", `${tilt} ${glare}`);
@@ -727,8 +727,8 @@ export function App(props = {}) {
       const rect = element.getBoundingClientRect();
       const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
       const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
-      const rotateY = (relativeX - 0.5) * 14;
-      const rotateX = (0.5 - relativeY) * 12;
+      const rotateY = (relativeX - 0.5) * 18;
+      const rotateX = (0.5 - relativeY) * 16;
 
       applyInteractiveStyle(element, {
         tiltEnabled: settings.tiltEnabled,
@@ -751,14 +751,20 @@ export function App(props = {}) {
 
       applyInteractiveStyle(element, {
         tiltEnabled: false,
-        glareEnabled: false,
+        glareEnabled: settings.glareEnabled,
         rotateX: 0,
         rotateY: 0,
-        glareRotation: 0,
+        glareRotation: -4,
         surfaceShift: 0,
         shineShiftX: 0,
         shineShiftY: 0,
         waveSkew: 0,
+        holoX: 50,
+        holoY: 50,
+        glareOpacity: 0.34,
+        glareStrength: 0.48,
+        edgeGlowOpacity: 0.2,
+        sparkleOpacity: 0.2,
       });
     },
   }), [settings.glareEnabled, settings.tiltEnabled]);
@@ -1367,8 +1373,8 @@ export function App(props = {}) {
     const rect = element.getBoundingClientRect();
     const relativeX = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
     const relativeY = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
-    const rotateY = (relativeX - 0.5) * 14;
-    const rotateX = (0.5 - relativeY) * 12;
+    const rotateY = (relativeX - 0.5) * 18;
+    const rotateX = (0.5 - relativeY) * 16;
 
     applyInteractiveStyle(element, {
       tiltEnabled: settings.tiltEnabled,
@@ -1393,14 +1399,20 @@ export function App(props = {}) {
 
     applyInteractiveStyle(element, {
       tiltEnabled: false,
-      glareEnabled: false,
+      glareEnabled: settings.glareEnabled,
       rotateX: 0,
       rotateY: 0,
-      glareRotation: 0,
+      glareRotation: -4,
       surfaceShift: 0,
       shineShiftX: 0,
       shineShiftY: 0,
       waveSkew: 0,
+      holoX: 50,
+      holoY: 50,
+      glareOpacity: 0.34,
+      glareStrength: 0.48,
+      edgeGlowOpacity: 0.2,
+      sparkleOpacity: 0.2,
     });
   }
 
