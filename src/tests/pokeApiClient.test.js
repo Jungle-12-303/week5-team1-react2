@@ -3,7 +3,7 @@
  * - PokeAPI 클라이언트가 정규 전국도감 범위만 카탈로그에 포함하는지 검증한다.
  */
 
-import { fetchPokemonCatalog } from "../app/data/pokeApiClient.js";
+import { fetchPokemonCatalog, fetchPokemonPreviewCatalog } from "../app/data/pokeApiClient.js";
 
 async function runCase(name, fn) {
   try {
@@ -78,6 +78,54 @@ export async function runPokeApiClientTests() {
 
       if (!fetchCalls.some((url) => url.includes("/pokemon?limit=1025&offset=0"))) {
         throw new Error("Expected the catalog loader to request only the supported national dex range.");
+      }
+    }),
+    await runCase("fetchPokemonPreviewCatalog loads only the first preview batch", async () => {
+      const fetchCalls = [];
+      const fetchMock = (url) => {
+        fetchCalls.push(url);
+
+        if (url.includes("/pokemon?limit=10&offset=0")) {
+          return createJsonResponse({
+            results: Array.from({ length: 12 }, (_, index) => ({
+              name: `pokemon-${index + 1}`,
+              url: `https://pokeapi.co/api/v2/pokemon/${index + 1}/`,
+            })),
+          });
+        }
+
+        const pokemonMatch = /\/pokemon\/(\d+)\/?$/.exec(url);
+
+        if (pokemonMatch) {
+          const pokemonId = Number(pokemonMatch[1]);
+
+          return createJsonResponse({
+            id: pokemonId,
+            height: 7,
+            weight: 69,
+            types: [{ type: { name: "grass" } }],
+            stats: [
+              { stat: { name: "hp" }, base_stat: 45 },
+              { stat: { name: "attack" }, base_stat: 49 },
+              { stat: { name: "defense" }, base_stat: 49 },
+              { stat: { name: "special-attack" }, base_stat: 65 },
+              { stat: { name: "special-defense" }, base_stat: 65 },
+              { stat: { name: "speed" }, base_stat: 45 },
+            ],
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      const cards = await fetchPokemonPreviewCatalog(fetchMock);
+
+      if (cards.length !== 10) {
+        throw new Error(`Expected preview catalog to load 10 cards, received ${cards.length}.`);
+      }
+
+      if (!fetchCalls.some((url) => url.includes("/pokemon?limit=10&offset=0"))) {
+        throw new Error("Expected the preview catalog to request only the initial batch.");
       }
     }),
   ];

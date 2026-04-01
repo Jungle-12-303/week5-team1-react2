@@ -25,6 +25,50 @@ function normalizeProps(props) {
   return props ?? {};
 }
 
+function describePatch(patch) {
+  if (!patch || typeof patch !== "object") {
+    return "UNKNOWN_PATCH";
+  }
+
+  if (patch.type === "SET_PROP" || patch.type === "REMOVE_PROP") {
+    return `${patch.type}: ${patch.name}`;
+  }
+
+  if (patch.type === "SET_EVENT" || patch.type === "REMOVE_EVENT") {
+    return `${patch.type}: ${patch.name}`;
+  }
+
+  return patch.type;
+}
+
+function summarizePatchLabels(patches) {
+  const rawLabels = patches.map(describePatch);
+  const semanticLabels = rawLabels.filter((label) => {
+    if (label.startsWith("SET_EVENT") || label.startsWith("REMOVE_EVENT")) {
+      return false;
+    }
+
+    if (label.startsWith("SET_PROP: data-")) {
+      return false;
+    }
+
+    return true;
+  });
+  const sourceLabels = semanticLabels.length > 0 ? semanticLabels : rawLabels;
+  const uniqueLabels = [];
+
+  for (const label of sourceLabels) {
+    if (!uniqueLabels.includes(label)) {
+      uniqueLabels.push(label);
+    }
+  }
+  const prioritizedLabels = uniqueLabels.includes("SET_PROP: src")
+    ? ["SET_PROP: src", ...uniqueLabels.filter((label) => label !== "SET_PROP: src")]
+    : uniqueLabels;
+
+  return prioritizedLabels.slice(0, 6);
+}
+
 export class FunctionComponent {
   constructor(renderFn, options = {}) {
     if (typeof renderFn !== "function") {
@@ -53,13 +97,32 @@ export class FunctionComponent {
     this.pendingEffects = [];
     this.renderCount = 0;
     this.lastPatches = [];
+    this.totalPatchCount = 0;
     this.scheduledUpdate = null;
     this.engine = null;
     this.hasMountedOnce = false;
+    this.runtimeBridge = options.runtimeBridge ?? null;
     // expectedHookCount:
     // - 첫 렌더에서 관측한 Hook 개수를 기억한다.
     // - 이후 렌더에서 Hook 개수가 달라지면 규칙 위반으로 본다.
     this.expectedHookCount = null;
+  }
+
+  publishRuntimeSnapshot(reason) {
+    if (!this.runtimeBridge || typeof this.runtimeBridge.publish !== "function") {
+      return;
+    }
+
+    this.runtimeBridge.publish({
+      reason,
+      renderCount: this.renderCount,
+      patchCount: this.lastPatches.length,
+      lastRenderPatchCount: this.lastPatches.length,
+      totalPatchCount: this.totalPatchCount,
+      patchLabels: summarizePatchLabels(this.lastPatches),
+      diffMode: this.diffMode,
+      isMounted: this.isMounted,
+    });
   }
 
   performRender(props = this.currentProps) {
@@ -124,6 +187,7 @@ export class FunctionComponent {
 
     // 화면이 실제로 반영된 뒤에만 effect를 실행해야 하므로 마지막에 commit한다.
     commitEffects(this);
+    this.publishRuntimeSnapshot("mount");
 
     return nextVNode;
   }
@@ -144,8 +208,10 @@ export class FunctionComponent {
 
     this.currentVNode = nextVNode;
     this.lastPatches = result.patches;
+    this.totalPatchCount += result.patches.length;
 
     commitEffects(this);
+    this.publishRuntimeSnapshot("update");
 
     return {
       vnode: nextVNode,
@@ -160,5 +226,6 @@ export class FunctionComponent {
 
     // 실제 cleanup 로직은 별도 모듈로 분리해 책임을 단순하게 유지한다.
     unmountComponent(this);
+    this.publishRuntimeSnapshot("unmount");
   }
 }

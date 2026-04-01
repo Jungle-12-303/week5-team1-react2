@@ -7,6 +7,7 @@ const API_ROOT = "https://pokeapi.co/api/v2";
 const ARTWORK_ROOT = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork";
 const THUMB_ROOT = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon";
 const MAX_NATIONAL_DEX = 1025;
+const PREVIEW_CARD_COUNT = 10;
 const IGNORED_TYPES = new Set(["unknown", "shadow"]);
 const TYPE_ORDER = [
   "normal",
@@ -164,6 +165,51 @@ export async function fetchPokemonCatalog(fetchImpl = globalThis.fetch) {
       };
     })
     .filter(Boolean);
+}
+
+export async function fetchPokemonPreviewCatalog(fetchImpl = globalThis.fetch, limit = PREVIEW_CARD_COUNT) {
+  assertFetch(fetchImpl);
+
+  const safeLimit = Math.max(1, Math.min(limit, PREVIEW_CARD_COUNT, MAX_NATIONAL_DEX));
+  const listData = await readJson(fetchImpl(`${API_ROOT}/pokemon?limit=${safeLimit}&offset=0`));
+  const detailRows = await Promise.all(
+    listData.results.slice(0, safeLimit).map(async (item) => {
+      const pokemonId = getPokemonIdFromUrl(item.url);
+
+      if (!pokemonId || pokemonId > MAX_NATIONAL_DEX) {
+        return null;
+      }
+
+      const pokemonData = await readJson(fetchImpl(item.url));
+      const number = String(pokemonId).padStart(3, "0");
+      const types = sortTypes(pokemonData.types.map((entry) => entry.type.name));
+      const sprites = getSpriteUrls(pokemonId);
+
+      return {
+        id: createCardId(number),
+        name: normalizeName(item.name),
+        number,
+        imageUrl: sprites.imageUrl,
+        thumbUrl: sprites.thumbUrl,
+        types,
+        rarity: getShowcaseRarity(pokemonId, types),
+        height: pokemonData.height / 10,
+        weight: pokemonData.weight / 10,
+        baseStats: {
+          hp: pokemonData.stats.find((entry) => entry.stat.name === "hp")?.base_stat ?? 0,
+          attack: pokemonData.stats.find((entry) => entry.stat.name === "attack")?.base_stat ?? 0,
+          defense: pokemonData.stats.find((entry) => entry.stat.name === "defense")?.base_stat ?? 0,
+          specialAttack: pokemonData.stats.find((entry) => entry.stat.name === "special-attack")?.base_stat ?? 0,
+          specialDefense: pokemonData.stats.find((entry) => entry.stat.name === "special-defense")?.base_stat ?? 0,
+          speed: pokemonData.stats.find((entry) => entry.stat.name === "speed")?.base_stat ?? 0,
+        },
+        flavor: "Preview cards load first so the collection can open immediately while the full national catalog streams in.",
+        isFavorite: false,
+      };
+    })
+  );
+
+  return detailRows.filter(Boolean);
 }
 
 function extractFlavorText(speciesData) {

@@ -62,6 +62,7 @@ export function createEngine(options = {}) {
     }),
     diffMode: options.diffMode ?? DIFF_MODES.AUTO,
     lastPatches: [],
+    totalPatchCount: 0,
   };
 
   return {
@@ -98,6 +99,7 @@ export function createEngine(options = {}) {
       applyPatches(managedDomRoot, patches);
       state.currentVNode = nextVNode;
       state.lastPatches = patches;
+      state.totalPatchCount += patches.length;
       pushHistory(state.history, nextVNode);
 
       return {

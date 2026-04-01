@@ -37,6 +37,7 @@ export function createApp(options = {}) {
     batching: normalizeBatching(options.batching),
     diffMode: options.diffMode ?? "auto",
     historyLimit: options.historyLimit ?? null,
+    runtimeBridge: initialProps.runtimeBridge ?? null,
   });
 
   return {
@@ -74,6 +75,7 @@ export function createApp(options = {}) {
         currentVNode: instance.currentVNode,
         lastPatches: instance.lastPatches,
         renderCount: instance.renderCount,
+        totalPatchCount: instance.totalPatchCount,
         engine: engineSnapshot,
       };
     },

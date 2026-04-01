@@ -34,6 +34,10 @@ function renderCards(props) {
 export function CollectionPage(props) {
   // CollectionPage는 카드 앱의 작업 중심 화면이다.
   // 검색, 필터, 정렬, 선택, 즐겨찾기 변경이 모두 여기서 자주 일어난다.
+  const rowHeight = props.rowHeight ?? 430;
+  const contentHeight = props.contentHeight ?? rowHeight;
+  const windowOffset = props.windowOffset ?? 0;
+
   return h("section", { id: "page-collection", className: "page-stack" },
     h(PageHeader, {
       kicker: "Collection",
@@ -49,7 +53,8 @@ export function CollectionPage(props) {
       ],
     }),
     h(CollectionToolbar, {
-      visibleCount: props.cards.length,
+      visibleCount: props.visibleCount,
+      renderedCount: props.renderedCount,
       totalCount: props.totalCount,
       searchKeyword: props.searchKeyword,
       typeFilter: props.typeFilter,
@@ -61,6 +66,25 @@ export function CollectionPage(props) {
       onFavoritesToggle: props.onFavoritesToggle,
       onSortChange: props.onSortChange,
     }),
-    h("section", { id: "collection-card-grid", className: "card-grid" }, ...renderCards(props))
+    props.visibleCount === 0
+      ? h("section", { id: "collection-card-grid", className: "card-grid" }, ...renderCards(props))
+      : h("section", {
+        id: "collection-scroll-area",
+        className: "collection-scroll-area",
+        onScroll: props.onViewportScroll,
+      },
+      h("div", {
+        className: "collection-virtual-canvas",
+        style: `height: ${contentHeight}px;`,
+      },
+      h("div", {
+        className: "collection-virtual-window",
+        style: `transform: translateY(${windowOffset}px);`,
+      },
+      h("section", {
+        id: "collection-card-grid",
+        className: "card-grid collection-virtual-grid",
+        style: `--collection-columns: ${props.cardsPerRow}; --collection-row-height: ${rowHeight}px;`,
+      }, ...renderCards(props)))))
   );
 }

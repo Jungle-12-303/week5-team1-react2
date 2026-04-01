@@ -24,6 +24,7 @@ export function CardTile(props) {
     id: props.tileId ?? `card-tile-${card.id}`,
     className: cardClassName,
     "data-card-id": card.id,
+    "data-patch-highlight-root": "true",
     "data-tilt-enabled": String(Boolean(props.tiltEnabled)),
     "data-glare-enabled": String(Boolean(props.glareEnabled)),
     onMousemove: props.onPointerMove ? (event) => props.onPointerMove(event, card.id) : undefined,

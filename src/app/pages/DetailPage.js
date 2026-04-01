@@ -58,6 +58,29 @@ function renderRelatedCards(cards, onSelect) {
   );
 }
 
+function renderSpritePreview(card) {
+  return h("article", { className: "panel-card sprite-preview-card", id: "detail-sprite-preview" },
+    h("div", { className: "panel-heading" },
+      h("h2", null, "Game Sprite Card"),
+      h("p", null, "A smaller low-resolution texture card keeps the detail page grounded and makes the artwork mode change easier to compare.")
+    ),
+    h("div", { className: "sprite-preview-shell" },
+      h("div", { className: "sprite-preview-card-frame" },
+        h("img", {
+          id: "detail-sprite-image",
+          className: "detail-sprite-image",
+          src: card.thumbUrl,
+          alt: `${card.name} game sprite`,
+        }),
+        h("div", { className: "sprite-preview-caption" },
+          h("strong", { className: "sprite-preview-title" }, card.name),
+          h("span", { className: "sprite-preview-meta" }, "Retro game texture")
+        )
+      )
+    )
+  );
+}
+
 export function DetailPage(props) {
   // DetailPage는 선택 카드 한 장만 집중해서 보여주는 페이지다.
   // 목록 페이지와 달리 "몰입감"과 "정보 밀도"를 동시에 담당한다.
@@ -98,14 +121,17 @@ export function DetailPage(props) {
       ],
     }),
     h("section", { className: "detail-layout" },
-      h(CardShowcase, {
-        card: props.card,
-        tiltEnabled: props.settings.tiltEnabled,
-        glareEnabled: props.settings.glareEnabled,
-        highResImage: props.settings.highResImage,
-        onPointerMove: props.onPointerMove,
-        onPointerLeave: props.onPointerLeave,
-      }),
+      h("div", { className: "detail-showcase-stack" },
+        h(CardShowcase, {
+          card: props.card,
+          tiltEnabled: props.settings.tiltEnabled,
+          glareEnabled: props.settings.glareEnabled,
+          highResImage: props.settings.highResImage,
+          onPointerMove: props.onPointerMove,
+          onPointerLeave: props.onPointerLeave,
+        }),
+        renderSpritePreview(props.card)
+      ),
       h("div", { className: "detail-side-panel" },
         h("section", { className: "detail-kpi-stack" },
           h(SummaryCard, {

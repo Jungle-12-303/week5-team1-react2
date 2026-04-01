@@ -15,6 +15,7 @@ export function CardShowcase(props) {
     id: "detail-showcase",
     className: "detail-showcase",
     "data-card-id": card.id,
+    "data-patch-highlight-root": "true",
     "data-tilt-enabled": String(Boolean(props.tiltEnabled)),
     "data-glare-enabled": String(Boolean(props.glareEnabled)),
     onMousemove: props.onPointerMove ? (event) => props.onPointerMove(event, card.id) : undefined,

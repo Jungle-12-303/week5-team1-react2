@@ -30,7 +30,11 @@ export function CollectionToolbar(props) {
   return h("section", { className: "panel-card toolbar-card" },
     h("div", { className: "panel-heading" },
       h("h2", null, "Collection Controls"),
-      h("p", { id: "collection-result-count" }, `${props.visibleCount} / ${props.totalCount} cards visible`)
+      h("p", {
+        id: "collection-result-count",
+      }, props.renderedCount < props.visibleCount
+        ? `${props.visibleCount} matched · ${props.renderedCount} cards rendered in view / ${props.totalCount} loaded`
+        : `${props.visibleCount} / ${props.totalCount} cards visible`)
     ),
     h("div", { className: "toolbar-grid" },
       h("label", { className: "field" },

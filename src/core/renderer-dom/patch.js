@@ -13,6 +13,8 @@ import { createDomFromVNode } from "./createDom.js";
 import { applyDomProp } from "./applyProps.js";
 import { setEvent, removeEvent } from "./applyEvents.js";
 
+const PATCH_HIGHLIGHT_CLASS = "is-patch-highlighted";
+
 function arePathsEqual(leftPath = [], rightPath = []) {
   if (leftPath.length !== rightPath.length) {
     return false;
@@ -57,6 +59,64 @@ function getParentByPath(rootDom, parentPath = []) {
   return getDomNodeByPath(rootDom, parentPath);
 }
 
+function resolveHighlightTarget(node) {
+  if (!node) {
+    return null;
+  }
+
+  const baseNode = node.nodeType === 3 ? node.parentElement : node;
+
+  if (!baseNode) {
+    return null;
+  }
+
+  if (typeof baseNode.closest === "function") {
+    return baseNode.closest("[data-patch-highlight-root='true']") ?? baseNode;
+  }
+
+  let current = baseNode;
+
+  while (current) {
+    if (typeof current.getAttribute === "function" && current.getAttribute("data-patch-highlight-root") === "true") {
+      return current;
+    }
+
+    current = current.parentElement ?? current.parentNode ?? null;
+  }
+
+  return baseNode;
+}
+
+function highlightPatchedNode(node) {
+  const target = resolveHighlightTarget(node);
+
+  if (!target) {
+    return;
+  }
+
+  if (target.__patchHighlightTimer) {
+    clearTimeout(target.__patchHighlightTimer);
+  }
+
+  if (target.classList) {
+    target.classList.remove(PATCH_HIGHLIGHT_CLASS);
+    void target.offsetWidth;
+    target.classList.add(PATCH_HIGHLIGHT_CLASS);
+  }
+  if (typeof target.setAttribute === "function") {
+    target.setAttribute("data-patch-highlighted", "true");
+  }
+  target.__patchHighlightTimer = setTimeout(() => {
+    if (target.classList) {
+      target.classList.remove(PATCH_HIGHLIGHT_CLASS);
+    }
+    if (typeof target.removeAttribute === "function") {
+      target.removeAttribute("data-patch-highlighted");
+    }
+    target.__patchHighlightTimer = null;
+  }, 2400);
+}
+
 /**
  * 목적:
  * - 단일 patch를 DOM에 적용한다.
@@ -69,18 +129,21 @@ export function applySinglePatch(rootDom, patch, context = {}) {
     case PATCH_TYPES.SET_PROP: {
       const target = getDomNodeByPath(rootDom, patch.path);
       applyDomProp(target, patch.name, patch.value);
+      highlightPatchedNode(target);
       return;
     }
 
     case PATCH_TYPES.REMOVE_PROP: {
       const target = getDomNodeByPath(rootDom, patch.path);
       applyDomProp(target, patch.name, null);
+      highlightPatchedNode(target);
       return;
     }
 
     case PATCH_TYPES.SET_TEXT: {
       const target = getDomNodeByPath(rootDom, patch.path);
       target.textContent = patch.value;
+      highlightPatchedNode(target);
       return;
     }
 
@@ -89,6 +152,7 @@ export function applySinglePatch(rootDom, patch, context = {}) {
       const nextSibling = parent.childNodes[patch.index] ?? null;
       const newNode = createDomFromVNode(patch.node, context.documentRef ?? document);
       parent.insertBefore(newNode, nextSibling);
+      highlightPatchedNode(newNode);
       return;
     }
 
@@ -101,6 +165,7 @@ export function applySinglePatch(rootDom, patch, context = {}) {
       }
 
       parent.removeChild(child);
+      highlightPatchedNode(parent);
       return;
     }
 
@@ -114,6 +179,7 @@ export function applySinglePatch(rootDom, patch, context = {}) {
 
       const nextSibling = parent.childNodes[patch.toIndex] ?? null;
       parent.insertBefore(child, nextSibling);
+      highlightPatchedNode(child);
       return;
     }
 
@@ -121,6 +187,7 @@ export function applySinglePatch(rootDom, patch, context = {}) {
       const target = getDomNodeByPath(rootDom, patch.path);
       const replacement = createDomFromVNode(patch.node, context.documentRef ?? document);
       target.replaceWith(replacement);
+      highlightPatchedNode(replacement);
       return;
     }
 

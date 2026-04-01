@@ -5,7 +5,7 @@
 
 import { h, useEffect, useMemo, useState } from "../index.js";
 import { CARD_LIBRARY, DEFAULT_SETTINGS, PAGE_META, TYPE_LABELS } from "./data/cardLibrary.js";
-import { fetchPokemonCatalog, fetchPokemonDetail } from "./data/pokeApiClient.js";
+import { fetchPokemonCatalog, fetchPokemonDetail, fetchPokemonPreviewCatalog } from "./data/pokeApiClient.js";
 import { AppShell } from "./components/AppShell.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { CollectionPage } from "./pages/CollectionPage.js";
@@ -14,6 +14,10 @@ import { SettingsPage } from "./pages/SettingsPage.js";
 
 const CATALOG_CACHE_KEY = "card-showcase-catalog-cache";
 const MAX_NATIONAL_DEX = 1025;
+const COLLECTION_ROW_HEIGHT = 430;
+const COLLECTION_BUFFER_ROWS = 1;
+const COLLECTION_FALLBACK_VIEWPORT_HEIGHT = 720;
+const COLLECTION_FALLBACK_VIEWPORT_WIDTH = 880;
 
 function canUseLocalStorage() {
   // 브라우저가 localStorage를 제공하지 않는 환경(예: 일부 테스트 환경)에서도
@@ -143,6 +147,34 @@ function createPageItems(pages) {
   }, {});
 }
 
+function createCatalogStatusMessage(loadedCount, isStreamingCatalog) {
+  if (isStreamingCatalog) {
+    return `Showing the first ${loadedCount} cards while the full national catalog streams in.`;
+  }
+
+  return `Loaded ${loadedCount} cards into the showcase.`;
+}
+
+function resolveCollectionColumnCount(width) {
+  if (width <= 560) {
+    return 1;
+  }
+
+  if (width <= 820) {
+    return 2;
+  }
+
+  if (width <= 1180) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function sortCards(cards, sortMode) {
   // 정렬은 원본 배열을 직접 바꾸지 않도록 항상 복사본에서 수행한다.
   // 그래야 useMemo와 상태 비교가 더 예측 가능해진다.
@@ -270,7 +302,7 @@ function createLocalDetail(card) {
   };
 }
 
-export function App() {
+export function App(props = {}) {
   // App은 문서에서 정의한 "단일 루트 상태 저장소" 역할을 그대로 수행한다.
   // 여기 있는 상태가 대시보드, 컬렉션, 상세, 설정 페이지 전체를 움직인다.
   const initialSettings = parseStoredSettings();
@@ -290,6 +322,12 @@ export function App() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [catalogNotice, setCatalogNotice] = useState(null);
+  const [isStreamingCatalog, setIsStreamingCatalog] = useState(false);
+  const [collectionViewport, setCollectionViewport] = useState({
+    scrollTop: 0,
+    viewportHeight: COLLECTION_FALLBACK_VIEWPORT_HEIGHT,
+    viewportWidth: COLLECTION_FALLBACK_VIEWPORT_WIDTH,
+  });
 
   const pageItems = useMemo(() => createPageItems(PAGE_META), []);
   // visibleCards는 카드 앱의 핵심 파생 데이터다.
@@ -312,6 +350,42 @@ export function App() {
 
     return visibleCards.filter((card) => card.id !== selectedCard.id).slice(0, 3);
   }, [selectedCard, visibleCards]);
+  const collectionColumnCount = useMemo(() => resolveCollectionColumnCount(collectionViewport.viewportWidth), [collectionViewport.viewportWidth]);
+  const collectionVisibleRowCount = useMemo(
+    () => Math.max(1, Math.ceil(collectionViewport.viewportHeight / COLLECTION_ROW_HEIGHT)),
+    [collectionViewport.viewportHeight]
+  );
+  const collectionTotalRowCount = useMemo(
+    () => Math.ceil(visibleCards.length / collectionColumnCount),
+    [collectionColumnCount, visibleCards.length]
+  );
+  const collectionStartRow = useMemo(() => {
+    const rawStartRow = Math.floor(collectionViewport.scrollTop / COLLECTION_ROW_HEIGHT) - COLLECTION_BUFFER_ROWS;
+    const maxStartRow = Math.max(0, collectionTotalRowCount - (collectionVisibleRowCount + COLLECTION_BUFFER_ROWS * 2));
+
+    return clamp(rawStartRow, 0, maxStartRow);
+  }, [collectionTotalRowCount, collectionViewport.scrollTop, collectionVisibleRowCount]);
+  const collectionEndRow = useMemo(
+    () => Math.min(collectionTotalRowCount, collectionStartRow + collectionVisibleRowCount + COLLECTION_BUFFER_ROWS * 2),
+    [collectionStartRow, collectionTotalRowCount, collectionVisibleRowCount]
+  );
+  const collectionStartIndex = useMemo(() => collectionStartRow * collectionColumnCount, [collectionColumnCount, collectionStartRow]);
+  const collectionEndIndex = useMemo(
+    () => Math.min(visibleCards.length, collectionEndRow * collectionColumnCount),
+    [collectionColumnCount, collectionEndRow, visibleCards.length]
+  );
+  const collectionVisibleSlice = useMemo(
+    () => visibleCards.slice(collectionStartIndex, collectionEndIndex),
+    [collectionEndIndex, collectionStartIndex, visibleCards]
+  );
+  const collectionWindowOffset = useMemo(
+    () => collectionStartRow * COLLECTION_ROW_HEIGHT,
+    [collectionStartRow]
+  );
+  const collectionContentHeight = useMemo(
+    () => Math.max(collectionViewport.viewportHeight, collectionTotalRowCount * COLLECTION_ROW_HEIGHT),
+    [collectionTotalRowCount, collectionViewport.viewportHeight]
+  );
 
   useEffect(() => {
     // 페이지 전환이 실제로 반영되고 있음을 브라우저 탭 제목에서도 보여준다.
@@ -320,6 +394,57 @@ export function App() {
 
     return () => {
       document.title = "Week5 React-like Runtime";
+    };
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (currentPage !== "collection") {
+      return undefined;
+    }
+
+    const viewport = document.getElementById("collection-scroll-area");
+
+    if (!viewport) {
+      return undefined;
+    }
+
+    function syncViewport() {
+      setCollectionViewport((previousValue) => {
+        const nextValue = {
+          scrollTop: viewport.scrollTop,
+          viewportHeight: viewport.clientHeight || previousValue.viewportHeight,
+          viewportWidth: viewport.clientWidth || previousValue.viewportWidth,
+        };
+
+        if (
+          previousValue.scrollTop === nextValue.scrollTop
+          && previousValue.viewportHeight === nextValue.viewportHeight
+          && previousValue.viewportWidth === nextValue.viewportWidth
+        ) {
+          return previousValue;
+        }
+
+        return nextValue;
+      });
+    }
+
+    syncViewport();
+
+    let resizeObserver = null;
+
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(syncViewport);
+      resizeObserver.observe(viewport);
+    }
+
+    window.addEventListener("resize", syncViewport);
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+
+      window.removeEventListener("resize", syncViewport);
     };
   }, [currentPage]);
 
@@ -347,11 +472,27 @@ export function App() {
             cachedCards.some((card) => card.id === previousValue) ? previousValue : cachedCards[0]?.id ?? null
           );
           setIsLoading(false);
+          setIsStreamingCatalog(false);
           setLastAction(`Loaded ${cachedCards.length} cached cards while refreshing the remote catalog.`);
         }
       }
 
       try {
+        if (dataMode === "remote" && cachedCatalog.length === 0) {
+          const previewCards = mergeFavoriteFlags(await fetchPokemonPreviewCatalog(), favoriteIds);
+
+          if (isActive && previewCards.length > 0) {
+            setCards(previewCards);
+            setSelectedCardId((previousValue) =>
+              previewCards.some((card) => card.id === previousValue) ? previousValue : previewCards[0]?.id ?? null
+            );
+            setIsLoading(false);
+            setIsStreamingCatalog(true);
+            setCatalogNotice("Opening the collection with the first 10 cards while the full national catalog loads in the background.");
+            setLastAction(createCatalogStatusMessage(previewCards.length, true));
+          }
+        }
+
         const remoteCards = dataMode === "local"
           ? cloneDefaultCards()
           : await fetchPokemonCatalog();
@@ -366,8 +507,9 @@ export function App() {
           nextCards.some((card) => card.id === previousValue) ? previousValue : nextCards[0]?.id ?? null
         );
         setIsLoading(false);
+        setIsStreamingCatalog(false);
         setCatalogNotice(null);
-        setLastAction(`Loaded ${nextCards.length} cards into the showcase.`);
+        setLastAction(createCatalogStatusMessage(nextCards.length, false));
 
         if (dataMode !== "local") {
           writeCatalogCache(remoteCards);
@@ -386,6 +528,7 @@ export function App() {
           nextCards.some((card) => card.id === previousValue) ? previousValue : nextCards[0]?.id ?? null
         );
         setIsLoading(false);
+        setIsStreamingCatalog(false);
         setLoadError(null);
         setCatalogNotice(
           cachedCatalog.length > 0
@@ -522,6 +665,16 @@ export function App() {
   function handleSortChange(event) {
     setSortMode(event.target.value);
     setLastAction(`Collection sort changed to ${event.target.value}.`);
+  }
+
+  function handleCollectionViewportScroll(event) {
+    const target = event.currentTarget;
+
+    setCollectionViewport((previousValue) => ({
+      scrollTop: target.scrollTop,
+      viewportHeight: target.clientHeight || previousValue.viewportHeight,
+      viewportWidth: target.clientWidth || previousValue.viewportWidth,
+    }));
   }
 
   function handleSelectCard(cardId) {
@@ -736,8 +889,14 @@ export function App() {
     if (currentPage === "collection") {
       return h(CollectionPage, {
         onNavigate: handleNavigate,
-        cards: visibleCards,
+        cards: collectionVisibleSlice,
+        visibleCount: visibleCards.length,
+        renderedCount: collectionVisibleSlice.length,
         totalCount: cards.length,
+        cardsPerRow: collectionColumnCount,
+        rowHeight: COLLECTION_ROW_HEIGHT,
+        contentHeight: collectionContentHeight,
+        windowOffset: collectionWindowOffset,
         searchKeyword,
         typeFilter,
         favoritesOnly,
@@ -746,6 +905,7 @@ export function App() {
         settings,
         selectedCardId,
         emptyMessage: "No cards match the current collection filters.",
+        onViewportScroll: handleCollectionViewportScroll,
         onSearchInput: handleSearchInput,
         onTypeFilterChange: handleTypeFilterChange,
         onFavoritesToggle: handleFavoritesToggle,
@@ -790,6 +950,7 @@ export function App() {
       totalCount: cards.length,
       favoriteCount,
       visibleCount: visibleCards.length,
+      isStreamingCatalog,
       selectedCard,
       spotlightCard,
       lastAction,
@@ -810,5 +971,7 @@ export function App() {
     onNavigate: handleNavigate,
     lastAction,
     catalogNotice,
+    inspectorCard: selectedCard ?? spotlightCard,
+    highResImage: settings.highResImage,
   }, renderCurrentPage());
 }
