@@ -72,5 +72,17 @@ export function runPatchTests() {
         throw new Error("Expected multiple child removals to keep indices stable.");
       }
     }),
+    runCase("apply REMOVE_CHILD before INSERT_CHILD for the same parent to avoid deleting the replacement", () => {
+      const vnode = h("ul", null, h("li", { key: "old" }, "A"));
+      const root = createDomFromVNode(vnode);
+      applyPatches(root, [
+        { type: "INSERT_CHILD", path: [], index: 0, node: h("li", { key: "next" }, "B") },
+        { type: "REMOVE_CHILD", path: [], index: 0 },
+      ]);
+
+      if (root.childNodes.length !== 1 || root.textContent !== "B") {
+        throw new Error(`Expected replacement ordering to leave only the inserted child, received ${root.textContent}.`);
+      }
+    }),
   ];
 }

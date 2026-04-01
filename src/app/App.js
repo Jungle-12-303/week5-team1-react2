@@ -388,11 +388,7 @@ function buildRelatedCards(selectedCardBase, selectedCardDetail, allCards) {
       (left, right) => evolutionDexNumbers.indexOf(left.number) - evolutionDexNumbers.indexOf(right.number)
     );
 
-  if (evolutionCards.length > 0) {
-    return evolutionCards;
-  }
-
-  return Array.from(dedupedCards.values())
+  const fallbackCards = Array.from(dedupedCards.values())
     .filter((card) => countSharedTypes(selectedCard.types, card.types) > 0)
     .sort((left, right) => {
       const scoreDelta = scoreRelatedCard(selectedCard, right) - scoreRelatedCard(selectedCard, left);
@@ -405,6 +401,24 @@ function buildRelatedCards(selectedCardBase, selectedCardDetail, allCards) {
         - Math.abs(Number(selectedCard.number) - Number(right.number));
     })
     .slice(0, 3);
+
+  if (evolutionCards.length === 0) {
+    return fallbackCards;
+  }
+
+  const relatedCards = evolutionCards.slice();
+
+  fallbackCards.forEach((card) => {
+    if (relatedCards.length >= 3) {
+      return;
+    }
+
+    if (!relatedCards.some((existingCard) => existingCard.number === card.number)) {
+      relatedCards.push(card);
+    }
+  });
+
+  return relatedCards;
 }
 
 function readCardIdFromEvent(event) {

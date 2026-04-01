@@ -81,7 +81,7 @@ function getShowcaseRarity(id, types) {
 }
 
 function sortTypes(types) {
-  return types.slice().sort((left, right) => TYPE_ORDER.indexOf(left) - TYPE_ORDER.indexOf(right));
+  return Array.from(new Set(types)).sort((left, right) => TYPE_ORDER.indexOf(left) - TYPE_ORDER.indexOf(right));
 }
 
 async function readJson(responsePromise) {

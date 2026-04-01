@@ -346,8 +346,16 @@ export async function runAppTests() {
 
         inputValue(root.querySelector("#collection-search-input"), "vile");
         await flushMicrotasks();
+        await flushMicrotasks();
 
-        click(root.querySelector("#card-open-card-045"));
+        const vileplumeButton = root.querySelector("#card-open-card-045")
+          ?? root.querySelector("#collection-card-grid .card-visual-button");
+
+        if (!vileplumeButton) {
+          throw new Error("Expected the filtered collection view to expose a detail-open button.");
+        }
+
+        click(vileplumeButton);
         await flushMicrotasks();
         await flushMicrotasks();
         await flushMicrotasks();
@@ -367,6 +375,10 @@ export async function runAppTests() {
 
         if (!relatedNames.includes("Oddish") || !relatedNames.includes("Gloom")) {
           throw new Error(`Expected Vileplume to recommend its evolution line first, received ${relatedNames.join(", ")}.`);
+        }
+
+        if (relatedButtons.length < 3) {
+          throw new Error(`Expected the detail page to top up evolution matches with a similar card, received ${relatedNames.join(", ")}.`);
         }
 
         click(relatedButtons[0]);

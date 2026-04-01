@@ -7,9 +7,9 @@ import { h } from "../../index.js";
 
 function renderTypeBadges(types, typeLabels) {
   // 타입 뱃지는 카드 데이터 배열을 사람이 빠르게 읽을 수 있는 작은 UI 조각으로 바꾼다.
-  return types.map((type) =>
+  return types.map((type, index) =>
     h("span", {
-      key: type,
+      key: `type-badge-${type}-${index}`,
       className: `type-chip type-chip-${type}`,
     }, typeLabels[type] ?? type)
   );

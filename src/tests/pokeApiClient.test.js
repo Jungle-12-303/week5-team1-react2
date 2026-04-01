@@ -133,6 +133,86 @@ export async function runPokeApiClientTests() {
         throw new Error("Expected the preview catalog to request only the initial batch.");
       }
     }),
+    await runCase("catalog and preview loaders normalize duplicate types into a stable unique order", async () => {
+      const fetchMock = (url) => {
+        if (url.includes("/pokemon?limit=1025&offset=0")) {
+          return createJsonResponse({
+            results: [
+              { name: "girafarig", url: "https://pokeapi.co/api/v2/pokemon/203/" },
+            ],
+          });
+        }
+
+        if (url.endsWith("/type")) {
+          return createJsonResponse({
+            results: [
+              { name: "normal", url: "https://pokeapi.co/api/v2/type/1/" },
+              { name: "psychic", url: "https://pokeapi.co/api/v2/type/14/" },
+            ],
+          });
+        }
+
+        if (url.endsWith("/type/1/")) {
+          return createJsonResponse({
+            name: "normal",
+            pokemon: [
+              { pokemon: { name: "girafarig", url: "https://pokeapi.co/api/v2/pokemon/203/" } },
+            ],
+          });
+        }
+
+        if (url.endsWith("/type/14/")) {
+          return createJsonResponse({
+            name: "psychic",
+            pokemon: [
+              { pokemon: { name: "girafarig", url: "https://pokeapi.co/api/v2/pokemon/203/" } },
+            ],
+          });
+        }
+
+        if (url.includes("/pokemon?limit=10&offset=0") || url.includes("/pokemon?limit=1&offset=0")) {
+          return createJsonResponse({
+            results: [
+              { name: "raging-bolt", url: "https://pokeapi.co/api/v2/pokemon/1021/" },
+            ],
+          });
+        }
+
+        if (url.endsWith("/pokemon/1021/")) {
+          return createJsonResponse({
+            id: 1021,
+            height: 52,
+            weight: 4800,
+            types: [
+              { type: { name: "electric" } },
+              { type: { name: "dragon" } },
+              { type: { name: "electric" } },
+            ],
+            stats: [
+              { stat: { name: "hp" }, base_stat: 125 },
+              { stat: { name: "attack" }, base_stat: 73 },
+              { stat: { name: "defense" }, base_stat: 91 },
+              { stat: { name: "special-attack" }, base_stat: 137 },
+              { stat: { name: "special-defense" }, base_stat: 89 },
+              { stat: { name: "speed" }, base_stat: 75 },
+            ],
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      const catalog = await fetchPokemonCatalog(fetchMock);
+      const preview = await fetchPokemonPreviewCatalog(fetchMock, 1);
+
+      if ((catalog[0]?.types ?? []).join(",") !== "normal,psychic") {
+        throw new Error(`Expected catalog types to remain unique and ordered, received ${(catalog[0]?.types ?? []).join(",")}.`);
+      }
+
+      if ((preview[0]?.types ?? []).join(",") !== "electric,dragon") {
+        throw new Error(`Expected preview types to dedupe repeated values, received ${(preview[0]?.types ?? []).join(",")}.`);
+      }
+    }),
     await runCase("fetchPokemonLocalizedNames resolves supported locale names with fallback priority", async () => {
       const fetchMock = (url) => {
         if (url.endsWith("/pokemon-species/25")) {

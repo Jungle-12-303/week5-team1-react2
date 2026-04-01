@@ -4,6 +4,7 @@
  */
 
 import { createApp, h, useEffect, useMemo, useState } from "../index.js";
+import { resolveComponentTree } from "../core/runtime/resolveComponentTree.js";
 
 function runCase(name, fn) {
   try {
@@ -530,6 +531,22 @@ export async function runRuntimeTests() {
 
       if (labels !== "C,A,B") {
         throw new Error(`Expected keyed reorder to update DOM order, received ${labels}.`);
+      }
+    }),
+    runCase("stateless child component keys survive resolution so keyed diff can stay stable", () => {
+      function TypeTile(props) {
+        return h("article", null, props.label);
+      }
+
+      const resolved = resolveComponentTree(
+        h(TypeTile, {
+          key: "card-203",
+          label: "Girafarig",
+        })
+      );
+
+      if (resolved.key !== "card-203") {
+        throw new Error(`Expected resolved stateless child vnode to keep its key, received ${resolved.key}.`);
       }
     }),
   ];

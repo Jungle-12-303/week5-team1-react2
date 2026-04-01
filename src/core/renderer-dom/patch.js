@@ -31,6 +31,18 @@ function orderPatches(patches = []) {
       const rightPatch = right.patch;
       const leftIsRemove = leftPatch.type === PATCH_TYPES.REMOVE_CHILD;
       const rightIsRemove = rightPatch.type === PATCH_TYPES.REMOVE_CHILD;
+      const leftIsInsert = leftPatch.type === PATCH_TYPES.INSERT_CHILD;
+      const rightIsInsert = rightPatch.type === PATCH_TYPES.INSERT_CHILD;
+
+      if (arePathsEqual(leftPatch.path, rightPatch.path)) {
+        if (leftIsRemove && rightIsInsert) {
+          return -1;
+        }
+
+        if (leftIsInsert && rightIsRemove) {
+          return 1;
+        }
+      }
 
       if (leftIsRemove && rightIsRemove && arePathsEqual(leftPatch.path, rightPatch.path)) {
         return rightPatch.index - leftPatch.index;

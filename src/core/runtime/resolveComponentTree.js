@@ -56,6 +56,14 @@ export function resolveComponentTree(inputVNode) {
 
   // 함수 컴포넌트는 이 시점에 즉시 실행해 실제 VNode로 바꾼다.
   const resolved = runWithHooksDisabled(() => vnode.tag(nextProps));
+  const resolvedTree = resolveComponentTree(resolved);
 
-  return resolveComponentTree(resolved);
+  if ((resolvedTree.key === null || resolvedTree.key === undefined) && vnode.key !== null && vnode.key !== undefined) {
+    return {
+      ...resolvedTree,
+      key: vnode.key,
+    };
+  }
+
+  return resolvedTree;
 }
